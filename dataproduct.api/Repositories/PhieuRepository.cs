@@ -433,6 +433,16 @@ namespace dataproduct.api.Repositories
                         .Where(x => x.IsDelete != 1 && x.IsLock != 1
                                  && x.MaBm == "HRC1_BBGN_ThepLong");
 
+                    // HRC2_BBGN_PhoiTam: workflow slab (Đúc/Kho/PKH), không dùng BmPheDuyet
+                    var hrc2PhoiTamQuery = _context.BmPhieus
+                        .Where(x => x.IsDelete != 1 && x.IsLock != 1
+                                 && x.MaBm == "HRC2_BBGN_PhoiTam")
+                        .Where(x => _context.BmQuyenXls.Any(q =>
+                            q.IdTaiKhoan == userId &&
+                            q.MaBm == x.MaBm &&
+                            (q.QuyenChucNang == 2 || q.QuyenChucNang == 4)
+                        ));
+
                     // HRC1_LoThoi/TinhLuyen: phiếu không có scope, trả nếu user có quyền 2|4 cho maBm
                     var hrc1LoTLQuery2 = _context.BmPhieus
                         .Where(x => x.IsDelete != 1 && x.IsLock != 1
@@ -447,6 +457,7 @@ namespace dataproduct.api.Repositories
                     var regularQuery2 = _context.BmPhieus
                         .Where(x => x.IsDelete != 1 && x.IsLock != 1
                                  && x.MaBm != "HRC1_BBGN_ThepLong"
+                                 && x.MaBm != "HRC2_BBGN_PhoiTam"
                                  && x.MaBm != "HRC1_LoThoi"
                                  && x.MaBm != "HRC1_TinhLuyen")
                         .Where(x =>
@@ -465,7 +476,7 @@ namespace dataproduct.api.Repositories
                             x.TinhTrang != 0
                         );
 
-                    query = regularQuery2.Union(hrc1BbgnQuery).Union(hrc1LoTLQuery2);
+                    query = regularQuery2.Union(hrc1BbgnQuery).Union(hrc2PhoiTamQuery).Union(hrc1LoTLQuery2);
                     break;
                 }
 

@@ -138,6 +138,21 @@ namespace dataproduct.api.Services
         }
 
         /// <summary>
+        /// Trả về map MaMe → GradeCode (MacThep) bằng cách gọi thẳng SP usp_GetPhanLoaiThepLong.
+        /// Dùng cho HRC1 Slab: không cần qua HRC1_MeThep vì bảng đó không có dữ liệu phôi tấm.
+        /// </summary>
+        public async Task<Dictionary<string, string>> GetMacThepMapAsync(List<string> maMes)
+        {
+            if (maMes == null || maMes.Count == 0)
+                return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            var raw = await QueryViaStoredProcAsync("view_dq1_nmlt_nuocthep", maMes);
+            return raw
+                .Where(kv => !string.IsNullOrWhiteSpace(kv.Value.GradeCode))
+                .ToDictionary(kv => kv.Key, kv => kv.Value.GradeCode!.Trim(), StringComparer.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
         /// Lấy danh sách mã mẻ có PhanLoai IS NULL trong N ngày gần nhất.
         /// Dùng cho Background Service.
         /// </summary>

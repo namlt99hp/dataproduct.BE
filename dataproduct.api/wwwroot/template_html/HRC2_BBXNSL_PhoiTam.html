@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <title>Biên bản xác nhận sản lượng phôi tấm - HRC2</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "Times New Roman", serif; font-size: 7pt; color: #000; }
+
+    .page {
+      width: 404mm;
+      padding: 6mm 8mm 6mm 8mm;
+      margin: 0 auto;
+      background: #fff;
+    }
+
+    /* ── HEADER ── */
+    .header { display: table; width: 100%; margin-bottom: 4px; }
+    .header-left {
+      display: table-cell; width: 55%;
+      vertical-align: middle;
+      font-weight: bold; font-size: 8pt;
+      text-transform: uppercase;
+    }
+    .header-right {
+      display: table-cell; width: 45%;
+      vertical-align: middle; text-align: right;
+      font-size: 7pt; line-height: 1.5;
+    }
+
+    /* ── TITLE ── */
+    .title {
+      text-align: center; font-size: 11pt; font-weight: bold;
+      text-transform: uppercase; margin: 6px 0 2px;
+    }
+    .sub-title { text-align: center; font-size: 8pt; margin-bottom: 4px; line-height: 1.6; }
+
+    /* ── TABLE ── */
+    table.main-table {
+      width: 100%; border-collapse: collapse;
+      font-size: 6.5pt; margin-top: 4px;
+    }
+    .main-table th,
+    .main-table td {
+      border: 1px solid #333;
+      padding: 2px 2px;
+      text-align: center;
+      vertical-align: middle;
+    }
+    .main-table th { font-weight: bold; background-color: #f0f0f0; font-size: 6pt; }
+    .main-table td.num  { text-align: right; }
+    .main-table td.txt  { text-align: left; }
+    .total-row td { font-weight: bold; background-color: #f5f5f5; }
+
+    tbody tr { page-break-inside: avoid; }
+
+    /* ── FOOTER ── */
+    .legal-note { margin-top: 6px; font-size: 7pt; font-style: italic; }
+
+    .signatures {
+      display: table; width: 100%; margin-top: 12px; text-align: center;
+    }
+    .sig-cell { display: table-cell; width: 33.3%; vertical-align: top; }
+    .sig-title { font-weight: bold; font-size: 8pt; margin-bottom: 3px; }
+    .sig-note  { font-size: 7pt; font-style: italic; color: #555; }
+    .sig-space { height: 36px; }
+    .sig-name  { font-weight: bold; }
+
+    @page { size: A3 landscape; margin: 0; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-left">
+      <img src="{{LogoUrl}}" alt="Logo" />
+      <br />
+      CÔNG TY CỔ PHẦN THÉP<br />HÒA PHÁT DUNG QUẤT
+    </div>
+    <div class="header-right">
+      <strong>BM.40/QT.05.15</strong><br />
+      <i>Ngày hiệu lực:</i> 01/04/2025<br />
+      <i>Lần sửa đổi:</i> 01
+    </div>
+  </div>
+
+  <!-- TIÊU ĐỀ -->
+  <div class="title">BIÊN BẢN XÁC NHẬN SẢN LƯỢNG PHÔI TẤM</div>
+  <div class="sub-title">
+    Số phiếu: <strong>{{soPhieu}}</strong>
+    &nbsp;|&nbsp;
+    Ngày: <strong>{{ngaySX}}</strong>
+    &nbsp;|&nbsp;
+    <strong>{{ca}}</strong>
+    &nbsp;Kíp: <strong>{{kip}}</strong>
+  </div>
+
+  <!-- BẢNG DỮ LIỆU -->
+  <table class="main-table">
+    <thead>
+      <!-- Row 1 -->
+      <tr>
+        <th rowspan="3" style="width:2%">STT</th>
+        <th rowspan="3" style="width:5%">Kíp-ngày</th>
+        <th rowspan="3" style="width:5%">Mác thép</th>
+        <th rowspan="3" style="width:5.5%">Mẻ thép</th>
+        <th rowspan="3" style="width:5.5%">Kích thước</th>
+        <th colspan="12" style="width:42%">Phôi nguội</th>
+        <th colspan="8" style="width:28%">Phôi nóng</th>
+        <th rowspan="3" style="width:3.5%">Tổng số phôi</th>
+        <th rowspan="3" style="width:3.5%">Tổng KL (tấn)</th>
+      </tr>
+      <!-- Row 2 -->
+      <tr>
+        <!-- Phôi nguội: 6 nhóm -->
+        <th colspan="2">Loại I</th>
+        <th colspan="2">Loại II</th>
+        <th colspan="2">Loại II tp</th>
+        <th colspan="2">Loại III</th>
+        <th colspan="2">Loại III tp</th>
+        <th colspan="2">Ngắn dài</th>
+        <!-- Phôi nóng: 4 nhóm -->
+        <th colspan="2">Loại I</th>
+        <th colspan="2">Loại II</th>
+        <th colspan="2">Loại II tp</th>
+        <th colspan="2">Loại III tp</th>
+      </tr>
+      <!-- Row 3: leaf headers -->
+      <tr>
+        <th>Số phôi</th><th>KL (tấn)</th>
+        <th>Số phôi</th><th>KL (tấn)</th>
+        <th>Số phôi</th><th>KL (tấn)</th>
+        <th>Số phôi</th><th>KL (tấn)</th>
+        <th>Số phôi</th><th>KL (tấn)</th>
+        <th>Số phôi</th><th>KL (tấn)</th>
+        <th>Số phôi</th><th>KL (tấn)</th>
+        <th>Số phôi</th><th>KL (tấn)</th>
+        <th>Số phôi</th><th>KL (tấn)</th>
+        <th>Số phôi</th><th>KL (tấn)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{TABLE_BODY}}
+    </tbody>
+  </table>
+
+  <!-- GHI CHÚ PHÁP LÝ -->
+  <div class="legal-note">
+    Ghi chú: Biên bản này được lập thành 2 bản có giá trị như nhau: bên giao và bên nhận mỗi bên giữ 1 bản.
+  </div>
+
+  <!-- CHỮ KÝ -->
+  <div class="signatures">
+    <div class="sig-cell">
+      <div class="sig-title">X.ĐPT - NM.HRC2</div>
+      <div class="sig-note">(Ký, ghi rõ họ tên)</div>
+      <div class="sig-space"></div>
+      <div class="sig-name"></div>
+    </div>
+    <div class="sig-cell">
+      <div class="sig-title">Kho phôi - NM.HRC2</div>
+      <div class="sig-note">(Ký, ghi rõ họ tên)</div>
+      <div class="sig-space"></div>
+      <div class="sig-name"></div>
+    </div>
+    <div class="sig-cell">
+      <div class="sig-title">P.QLCL</div>
+      <div class="sig-note">(Ký, ghi rõ họ tên)</div>
+      <div class="sig-space"></div>
+      <div class="sig-name"></div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

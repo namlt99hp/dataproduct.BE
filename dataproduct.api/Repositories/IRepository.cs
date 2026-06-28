@@ -414,11 +414,38 @@ namespace dataproduct.api.Repositories
         Task<bool> ExistsByTenAndMayDucAsync(string tenMacThep, List<int> idMayDucs, int? excludeId = null);
     }
 
+    public interface IHrc1MaVatTuRepository
+    {
+        Task<(IEnumerable<Hrc1MaVatTuItem> Data, int TotalCount)> SearchAsync(Hrc1MaVatTuSearchRequest req);
+        Task<Hrc1MaVatTuItem?> GetByIdAsync(int id);
+        Task<Hrc1MaVatTuItem> CreateAsync(Hrc1MaVatTuUpsertDto dto);
+        Task<Hrc1MaVatTuBulkCreateResult> BulkCreateAsync(List<Hrc1MaVatTuUpsertDto> items);
+        Task<bool> UpdateAsync(int id, Hrc1MaVatTuUpsertDto dto);
+        Task<bool> DeleteAsync(int id);
+    }
+
     public interface IMacThep_MayDucRepository
     {
         Task<List<MacThep_MayDuc>> GetByMacThepIdAsync(int idMacThep);
         Task<List<MacThep_MayDuc>> GetByMacThepIdsAsync(List<int> idMacTheps);
         Task SetMayDucsAsync(int idMacThep, List<int> idMayDucs);
+    }
+
+    public interface IHrc2SlabWorkflowRepository
+    {
+        Task<(IEnumerable<BkHrc2SlabItem> Data, int TotalCount)> SearchWithTrangThaiAsync(HrcSlabSearchRequest request);
+        Task<IEnumerable<SlabTongHopItem>> GetTongHopAsync(DateOnly? tuNgay, DateOnly? denNgay, string? ca, string? kip);
+        Task<IEnumerable<PhieuBBSLItem>> GetPhieuBBSLAsync(string? kip, int? ca);
+        Task<IEnumerable<SlabTongHopItem>> GetRuotPhieuAsync(Guid idPhieu);
+        Task<IEnumerable<BkHrc2SlabItem>> GetSlabsByPhieuAsync(Guid idPhieu);
+        Task ChuyenBBSLAsync(List<int> idSlabs, Guid idPhieu, int nguoiThucHien);
+        Task ThuHoiAsync(List<int> idSlabs, int nguoiThucHien);
+        Task XacNhanAsync(List<int> idSlabs, string loaiXacNhan, int nguoiThucHien);
+        Task HuyXacNhanAsync(List<int> idSlabs, string loaiXacNhan, int nguoiThucHien);
+        Task ChotPhieuAsync(Guid idPhieu, int nguoiThucHien);
+        Task HuyChotPhieuAsync(Guid idPhieu, int nguoiThucHien);
+        Task<SyncStatusItem> SyncAsync(DateOnly? ngayBatDau, DateOnly? ngayKetThuc);
+        Task<SyncStatusItem?> GetSyncStatusAsync();
     }
 
     public interface IMayDucRepository
@@ -429,5 +456,25 @@ namespace dataproduct.api.Repositories
         Task UpdateAsync(MayDuc entity);
         Task DeleteAsync(int id);
         Task<bool> ExistsByTenAsync(string tenMayDuc, byte nhaMay, int? excludeId = null);
+    }
+
+    public interface IHrc1SlabRepository
+    {
+        Task<(IEnumerable<Hrc1SlabItem> Data, int TotalCount)> SearchAsync(Hrc1SlabSearchRequest request);
+        Task<IEnumerable<Hrc1SlabTongHopItem>> GetTongHopAsync(DateOnly? tuNgay, DateOnly? denNgay, string? ca, string? kip);
+        Task<IEnumerable<Hrc1PhieuBBSLItem>> GetPhieuBBSLAsync(string? kip, int? ca);
+        Task<IEnumerable<Hrc1SlabTongHopItem>> GetRuotPhieuAsync(Guid idPhieu);
+        Task<IEnumerable<Hrc1SlabItem>> GetSlabsByPhieuAsync(Guid idPhieu);
+        Task<int> ChuyenPhoiAsync(List<int> idSlabs, Guid idPhieuNguon, string huong, int nguoiChuyen);
+        Task XacNhanAsync(List<int> idSlabs, string loaiXacNhan, int nguoiThucHien);
+        Task HuyXacNhanAsync(List<int> idSlabs, string loaiXacNhan, int nguoiThucHien);
+        Task ChotPhieuAsync(Guid idPhieu, int nguoiThucHien);
+        Task HuyChotPhieuAsync(Guid idPhieu, int nguoiThucHien);
+        Task<Hrc1SlabSyncResult> UpsertFromApiAsync(List<TscSlabItem> items);
+        Task<int> FillMacThepAsync();
+        Task UpdateSlabAsync(int id, Hrc1SlabUpdateRequest req);
+        Task<int> BulkUpdateMaVatTuAsync(Hrc1BulkUpdateMaVatTuRequest req);
+        Task<IEnumerable<Hrc1TongHopGhiChuItem>> GetTongHopGhiChuAsync(Guid idPhieu);
+        Task SaveTongHopGhiChuAsync(Hrc1SaveTongHopGhiChuRequest req);
     }
 }

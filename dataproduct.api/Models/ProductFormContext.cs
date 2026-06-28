@@ -75,10 +75,21 @@ public partial class ProductFormContext : DbContext
     public virtual DbSet<MacThep_MayDuc> MacThep_MayDucs { get; set; }
     public virtual DbSet<NhomPhanLoaiMacThep> NhomPhanLoaiMacTheps {get; set;}
 
+    // HRC2 Slab
+    public virtual DbSet<BkHrc2Slab> BkHrc2Slabs { get; set; }
+    public virtual DbSet<BkHrc2SlabTrangThai> BkHrc2SlabTrangThais { get; set; }
+    public virtual DbSet<BkSyncHrc2SlabControl> BkSyncHrc2SlabControls { get; set; }
+
     // HRC1
     public virtual DbSet<HRC1_MeThep> HRC1_MeTheps { get; set; }
     public virtual DbSet<HRC1_MePhanCong> HRC1_MePhanCongs { get; set; }
     public virtual DbSet<HRC1_LichSu> HRC1_LichSus { get; set; }
+
+    // HRC1 Slab
+    public virtual DbSet<Hrc1Slab> Hrc1Slabs { get; set; }
+    public virtual DbSet<Hrc1SlabTrangThai> Hrc1SlabTrangThais { get; set; }
+    public virtual DbSet<Hrc1MaVatTu> Hrc1MaVatTus { get; set; }
+    public virtual DbSet<Hrc1BbslTongHopGhiChu> Hrc1BbslTongHopGhiChus { get; set; }
     //    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     //#warning To protect potentially sensitive information in your connection string, you should move it out of source code. You can avoid scaffolding the connection string by using the Name= syntax to read it from configuration - see https://go.microsoft.com/fwlink/?linkid=2131148. For more guidance on storing connection strings, see https://go.microsoft.com/fwlink/?LinkId=723263.
     //        => optionsBuilder.UseSqlServer("Server=192.168.240.3,1433;Database=PRODUCT_FORM;User Id=sa;Password=HPDQ@1234;TrustServerCertificate=True;");
@@ -735,6 +746,118 @@ public partial class ProductFormContext : DbContext
             entity.Property(e => e.GiaTri).HasPrecision(18, 3);
             entity.Property(e => e.GiaTri_Goc).HasPrecision(18, 3);
             entity.Property(e => e.QuyKho).HasPrecision(18, 3);
+        });
+        
+        modelBuilder.Entity<BkHrc2Slab>(entity =>
+        {
+            entity.ToTable("BK_HRC2_Slab");
+
+            entity.Property(e => e.BkmisId).HasColumnName("BkmisID");
+            entity.Property(e => e.IdSlab).HasColumnName("IDSlab").HasMaxLength(100);
+            entity.Property(e => e.ShiftName).HasMaxLength(50);
+            entity.Property(e => e.CaSanXuat).HasColumnType("nchar(1)");
+            entity.Property(e => e.KipSanXuat).HasColumnType("nchar(1)");
+            entity.Property(e => e.MeThep).HasMaxLength(100);
+            entity.Property(e => e.MacThep).HasMaxLength(50);
+            entity.Property(e => e.ChatLuong).HasMaxLength(50);
+            entity.Property(e => e.ChatLuongTPHH).HasMaxLength(50);
+            entity.Property(e => e.ThongTinPhoi).HasMaxLength(200);
+            entity.Property(e => e.TpKhongDatGangLong).HasColumnName("TPKhongDatGangLong").HasMaxLength(200);
+            entity.Property(e => e.GhiChu).HasMaxLength(500);
+            entity.Property(e => e.LoaiPhoi).HasMaxLength(50);
+            entity.Property(e => e.SapCode).HasColumnName("SAPCode").HasMaxLength(50);
+            entity.Property(e => e.SapDescription).HasColumnName("SAPDescription").HasMaxLength(200);
+            entity.Property(e => e.SoLo).HasMaxLength(100);
+            entity.Property(e => e.OrderId).HasColumnName("OrderId").HasMaxLength(50);
+            entity.Property(e => e.SapLastTime).HasColumnName("SAPLastTime");
+            entity.Property(e => e.ChecksumVal).HasColumnName("Checksum_Val").HasMaxLength(50);
+            entity.Property(e => e.ChieuDay).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.ChieuRong).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.ChieuDai).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.KhoiLuong).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.KhoiLuongTinhToan).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.NgayTao).HasColumnType("datetime");
+            entity.Property(e => e.IsChot).HasDefaultValue(false);
+
+            entity.HasOne(s => s.TrangThai)
+                .WithOne(t => t.Slab)
+                .HasForeignKey<BkHrc2SlabTrangThai>(t => t.IdSlab);
+        });
+
+        modelBuilder.Entity<BkHrc2SlabTrangThai>(entity =>
+        {
+            entity.ToTable("BK_HRC2_Slab_TrangThai");
+            entity.Property(e => e.NgayTao).HasColumnType("datetime").HasDefaultValueSql("GETDATE()");
+            entity.Property(e => e.NgayChuyenKCS).HasColumnType("datetime");
+            entity.Property(e => e.NgayXacNhanDuc).HasColumnType("datetime");
+            entity.Property(e => e.NgayXacNhanKho).HasColumnType("datetime");
+            entity.Property(e => e.NgayChotPKH).HasColumnType("datetime");
+        });
+
+        modelBuilder.Entity<BkSyncHrc2SlabControl>(entity =>
+        {
+            entity.ToTable("BK_SyncHRC2SlabControl");
+            entity.Property(e => e.TableName).HasMaxLength(100);
+            entity.Property(e => e.TrangThai).HasMaxLength(20);
+            entity.Property(e => e.GhiChu).HasMaxLength(500);
+            entity.Property(e => e.BatDauLuc).HasColumnType("datetime");
+            entity.Property(e => e.KetThucLuc).HasColumnType("datetime");
+        });
+
+        // --- HRC1 Slab ---
+        modelBuilder.Entity<Hrc1Slab>(entity =>
+        {
+            entity.ToTable("HRC1_Slab");
+            entity.Property(e => e.IDSlab).HasColumnName("IDSlab").HasMaxLength(50).IsRequired();
+            entity.Property(e => e.IDPiece).HasColumnName("IDPiece").HasMaxLength(50);
+            entity.Property(e => e.MaMe).HasMaxLength(50);
+            entity.Property(e => e.MacThep).HasMaxLength(50);
+            entity.Property(e => e.CaSX).HasMaxLength(5);
+            entity.Property(e => e.KipSX).HasMaxLength(5);
+            entity.Property(e => e.MayDuc).HasMaxLength(10);
+            entity.Property(e => e.CutDate).HasColumnType("datetime");
+            entity.Property(e => e.ChieuDay).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.ChieuRong).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.ChieuDai).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.KhoiLuong).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.NgayTao)
+                  .HasColumnType("datetime")
+                  .HasDefaultValueSql("GETDATE()")
+                  .ValueGeneratedOnAdd();
+            entity.Property(e => e.NgayCapNhat).HasColumnType("datetime");
+            entity.Property(e => e.GhiChu).HasMaxLength(500);
+            entity.Property(e => e.MaVatTu).HasMaxLength(100);
+
+        });
+
+        modelBuilder.Entity<Hrc1MaVatTu>(entity =>
+        {
+            entity.ToTable("HRC1_MaVatTu");
+            entity.Property(e => e.MaVatTu).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.NgayTao)
+                  .HasColumnType("datetime")
+                  .HasDefaultValueSql("GETDATE()")
+                  .ValueGeneratedOnAdd();
+        });
+
+        modelBuilder.Entity<Hrc1BbslTongHopGhiChu>(entity =>
+        {
+            entity.ToTable("HRC1_BBSL_TongHop_GhiChu");
+            entity.Property(e => e.MacThep).HasMaxLength(50);
+            entity.Property(e => e.KichThuoc).HasMaxLength(50);
+            entity.Property(e => e.GhiChu).HasMaxLength(500);
+            entity.Property(e => e.NgayCapNhat).HasColumnType("datetime");
+        });
+
+        modelBuilder.Entity<Hrc1SlabTrangThai>(entity =>
+        {
+            entity.ToTable("HRC1_Slab_TrangThai");
+            entity.HasIndex(e => e.IdSlab).IsUnique();
+            entity.Property(e => e.NgayTao).HasColumnType("datetime").HasDefaultValueSql("GETDATE()");
+            entity.Property(e => e.NgayChuyen).HasColumnType("datetime");
+            entity.Property(e => e.NgayXacNhanDuc).HasColumnType("datetime");
+            entity.Property(e => e.NgayXacNhanKho).HasColumnType("datetime");
+            entity.Property(e => e.NgayChotPKH).HasColumnType("datetime");
         });
 
         OnModelCreatingPartial(modelBuilder);
