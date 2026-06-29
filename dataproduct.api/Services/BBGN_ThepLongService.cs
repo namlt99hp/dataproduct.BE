@@ -338,8 +338,7 @@ namespace dataproduct.api.Services
 
             var query = _masterContext.Tbl_MeThoi
                 .Where(x => x.Is_Delete != true
-                         && toHopLoThoi.Contains(x.ID_LoThoi)
-                         && x.ID_TrangThai != 5);
+                         && toHopLoThoi.Contains(x.ID_LoThoi));
 
             if (!string.IsNullOrWhiteSpace(searchStr))
                 query = query.Where(x => x.MaMeThoi.Contains(searchStr.Trim()));
