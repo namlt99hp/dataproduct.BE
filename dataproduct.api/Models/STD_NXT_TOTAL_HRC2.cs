@@ -57,5 +57,20 @@ public class STD_NXT_TOTAL_HRC2
 
     [Column(TypeName = "decimal(18,3)")]
     public decimal? KLPB_RH { get; set; }
+
+    /// <summary>Tổng khối lượng "Thống Kê" hiệu lực của Id_HeaderKey này, gộp mọi mẻ BOF trong ca, tại
+    /// thời điểm bấm Phân bổ/Không phân bổ gần nhất — đã bao gồm phần phân bổ nếu có. NULL nếu chưa bấm
+    /// 1 trong 2 nút, hoặc vừa Thu hồi phân bổ (reset chờ quyết định lại). Mirror
+    /// STD_NXT_TOTAL_HRC1.KLTK_BOF. Xem STD_XNT_HRC2Repository.ComputeKLTKAsync.</summary>
+    [Column(TypeName = "decimal(18,3)")]
+    public decimal? KLTK_BOF { get; set; }
+
+    /// <summary>Như KLTK_BOF, gộp mọi mẻ LF.</summary>
+    [Column(TypeName = "decimal(18,3)")]
+    public decimal? KLTK_LF { get; set; }
+
+    /// <summary>Như KLTK_BOF, gộp mọi mẻ RH.</summary>
+    [Column(TypeName = "decimal(18,3)")]
+    public decimal? KLTK_RH { get; set; }
 }
 

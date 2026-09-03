@@ -88,6 +88,20 @@ namespace dataproduct.api.Controllers
             }
         }
 
+        [HttpPost("search-nhapxuatton")]
+        public async Task<IActionResult> SearchNhapXuatTon([FromBody] STD_NXT_HRC2_NhapXuatTonSearchRequest request)
+        {
+            try
+            {
+                var result = await _service.GetNhapXuatTonAsync(request);
+                return Ok(new { data = result });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+            }
+        }
+
         [HttpPost("related-phieu-statuses")]
         public async Task<IActionResult> GetRelatedPhieuStatuses([FromBody] STD_NXT_RelatedPhieuStatusRequest request)
         {

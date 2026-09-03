@@ -26,6 +26,57 @@ namespace dataproduct.api.Repositories
         /// 1-5 = Lò thổi 1-5 (BOF), 6-10 = Tinh luyện 1-5 (LF).</summary>
         private static string ResolveBieuMauFromScope(int scope) => scope >= 1 && scope <= 5 ? "BOF" : "LF";
 
+        /// <summary>
+        /// Tính lại "Tổng thực tế" (tongThucTe) HIỆN TẠI của 1 PhuLieuID trong đúng Ngày/Ca, thẳng từ
+        /// nguồn Hrc1PhuLieu (chỉ dòng đo thật IsPhanBo=false) — mirror đúng công thức
+        /// DLNMHRC1Repository.GetHRC1GroupedByMaterialAsync (dùng khi bấm "Làm mới"), KHÔNG cộng
+        /// KLPhanBo (khác ComputeEffectiveTotalHrc1 dùng cho báo cáo thống kê KLTK). Dùng để phát hiện
+        /// mẻ tiêu hao đã đổi (VD: phiếu Tiêu Hao vừa được "Đề nghị hiệu chỉnh") sau lần "Làm mới" +
+        /// "Lưu" gần nhất trên Sổ Xuất-Nhập-Tồn, tránh phân bổ dựa trên ChênhLệch đã lỗi thời.
+        /// </summary>
+        private async Task<decimal> ComputeTongThucTeHienTaiAsync(DateOnly ngaySX, int ca, int phuLieuID)
+        {
+            var caByte = (byte)ca;
+            var raw = await (
+                from pl in _context.Hrc1PhuLieus
+                join tieuHao in _context.Hrc1TieuHaos on pl.MeID equals tieuHao.ID
+                where tieuHao.NgaySanXuat == ngaySX
+                      && tieuHao.Ca == caByte
+                      && tieuHao.IsDeleted == false
+                      && pl.IsDeleted == false
+                      && pl.IsPhanBo == false
+                      && pl.PhuLieuID == phuLieuID
+                      && (tieuHao.IDPhieu == null ||
+                          _context.BmPhieus.Any(p => p.Idphieu == tieuHao.IDPhieu && p.IsLock != 1 && p.IsDelete != 1))
+                select new { pl.IsManual, pl.KLPhuGia, pl.KLPhuGia_Manual }
+            ).ToListAsync();
+
+            return raw.Sum(x => x.IsManual ? (x.KLPhuGia_Manual ?? 0) : (x.KLPhuGia ?? 0));
+        }
+
+        /// <summary>
+        /// Chia totalAmount cho các phần tử trong ids: (N-1) phần tử đầu nhận giá trị làm tròn
+        /// Math.Round(totalAmount / ids.Count), phần tử CUỐI nhận phần dư (totalAmount - tổng đã gán).
+        /// Đảm bảo tổng các phần luôn khớp CHÍNH XÁC totalAmount, tránh lệch tích lũy khi làm tròn
+        /// riêng lẻ từng mẻ (VD: 10 chia 3 mẻ → 3.3333 làm tròn 3 cho cả 3 mẻ → tổng chỉ còn 9).
+        /// Trả về giá trị làm tròn mỗi phần (perUnit) để lưu vào cột thống kê KLPB_*.
+        /// </summary>
+        private static decimal PhanBoKhongLechLamTron<TKey>(
+            IDictionary<TKey, decimal> target, IReadOnlyList<TKey> ids, decimal totalAmount)
+        {
+            if (ids.Count == 0) return 0;
+
+            var perUnit = Math.Round(totalAmount / ids.Count);
+            decimal sumAssigned = 0;
+            for (var i = 0; i < ids.Count - 1; i++)
+            {
+                target[ids[i]] = perUnit;
+                sumAssigned += perUnit;
+            }
+            target[ids[ids.Count - 1]] = totalAmount - sumAssigned;
+            return perUnit;
+        }
+
         /// <summary>Port đúng công thức DLNMHRC1Repository.ComputeEffectiveTotal (api/DLNMHRC1/search-thongke)
         /// sang decimal cho 1 dòng HRC1_PhuLieu.</summary>
         private static decimal? ComputeEffectiveTotalHrc1(Hrc1PhuLieu p)
@@ -697,6 +748,15 @@ namespace dataproduct.api.Repositories
                     throw new Exception("Chênh lệch không khớp với dữ liệu đã lưu. Vui lòng lưu lại trước khi phân bổ.");
                 }
 
+                // ========== BƯỚC 1.5: Kiểm tra mẻ tiêu hao có bị đổi (VD: do "Đề nghị hiệu chỉnh")
+                // sau lần "Làm mới" + "Lưu" gần nhất chưa — tránh phân bổ dựa trên ChênhLệch lỗi thời. ==========
+                var tongThucTeHienTai = await ComputeTongThucTeHienTaiAsync(ngaySXDate, entity.Ca, entity.PhuLieuID);
+                var tongThucTeDiff = Math.Abs((totalRow.TongSDTrenSoSach ?? 0) - tongThucTeHienTai);
+                if (tongThucTeDiff > 0.001m)
+                {
+                    throw new Exception("Số liệu tiêu hao mẻ đã thay đổi so với lần lưu gần nhất trên Sổ Xuất-Nhập-Tồn (có thể do phiếu Tiêu Hao vừa được hiệu chỉnh). Vui lòng bấm \"Làm mới\" rồi \"Lưu\" lại Sổ Xuất-Nhập-Tồn trước khi phân bổ.");
+                }
+
                 // ========== BƯỚC 2: Lấy tất cả mẻ trong HRC1_TieuHao theo ngày/ca ==========
                 // Loại dòng thuộc phiếu đã khóa (IsLock=1 — clone "Đề nghị hiệu chỉnh" đang mở), mirror
                 // DLNMHRC1Repository.GetAllAsync — tránh đếm đôi mẻ khi tính số mẻ để phân bổ chênh lệch.
@@ -764,11 +824,13 @@ namespace dataproduct.api.Repositories
                         .Where(id => meLookupAll.TryGetValue(id, out var d) &&
                                      d.BieuMau != null &&
                                      d.BieuMau.Equals("BOF", StringComparison.OrdinalIgnoreCase))
+                        .OrderBy(id => id)
                         .ToList();
                     var lfMeIds = meIds
                         .Where(id => meLookupAll.TryGetValue(id, out var d) &&
                                      d.BieuMau != null &&
                                      d.BieuMau.Equals("LF", StringComparison.OrdinalIgnoreCase))
+                        .OrderBy(id => id)
                         .ToList();
 
                     if (bofMeIds.Count == 0 && tyLeBOF is decimal tBof && tBof != 0)
@@ -781,9 +843,7 @@ namespace dataproduct.api.Repositories
                     if (bofMeIds.Any() && tyLeBOF is decimal tyLeBOFValue && tyLeBOFValue > 0)
                     {
                         var bofAmount = entity.ChenhLech * tyLeBOFValue / 100;
-                        var klPerBof = Math.Round(bofAmount / bofMeIds.Count);
-                        klPerBofToPersist = klPerBof;
-                        foreach (var id in bofMeIds) klPhanBoByMe[id] = klPerBof;
+                        klPerBofToPersist = PhanBoKhongLechLamTron(klPhanBoByMe, bofMeIds, bofAmount);
                     }
                     else
                     {
@@ -794,9 +854,7 @@ namespace dataproduct.api.Repositories
                     if (lfMeIds.Any() && tyLeLF is decimal tyLeLFValue && tyLeLFValue > 0)
                     {
                         var lfAmount = entity.ChenhLech * tyLeLFValue / 100;
-                        var klPerLF = Math.Round(lfAmount / lfMeIds.Count);
-                        klPerLFToPersist = klPerLF;
-                        foreach (var id in lfMeIds) klPhanBoByMe[id] = klPerLF;
+                        klPerLFToPersist = PhanBoKhongLechLamTron(klPhanBoByMe, lfMeIds, lfAmount);
                     }
                     else
                     {
@@ -953,6 +1011,88 @@ namespace dataproduct.api.Repositories
             {
                 throw new Exception(ex.Message);
             }
+        }
+
+        /// <summary>
+        /// Đối chiếu tính liên tục của sổ Xuất-Nhập-Tồn: với mỗi Scope (tổ hợp Lò/TL), ghép 2 PHIẾU
+        /// liên tiếp theo thời gian (NgaySX, Ca) trong khoảng lọc, rồi full-outer-join theo PhuLieuID
+        /// giữa 2 phiếu đó — bên trái lấy TonCuoiCa (phiếu ca trước), bên phải lấy TonDauCa (phiếu ca
+        /// sau). Phụ liệu chỉ có ở 1 trong 2 phiếu (mới phát sinh, hoặc không còn dùng nữa) thì bên
+        /// còn lại để trống thay vì bị bỏ qua khỏi kết quả.
+        /// </summary>
+        public async Task<List<STD_NXT_HRC1_NhapXuatTonRow>> GetNhapXuatTonAsync(STD_NXT_HRC1_NhapXuatTonSearchRequest request)
+        {
+            var tuNgay = request.TuNgay.Date;
+            var denNgayExclusive = request.DenNgay.Date.AddDays(1);
+
+            var rows = await (
+                from d in _context.STD_XUAT_NHAP_TON_HRC1s
+                join p in _context.BmPhieus on d.Id_Phieu equals p.Idphieu
+                where p.IsDelete != 1
+                      && d.NgaySX >= tuNgay
+                      && d.NgaySX < denNgayExclusive
+                select d
+            ).ToListAsync();
+
+            var buffer = new List<(STD_NXT_HRC1_NhapXuatTonRow Row, DateTime SortDate, int SortCa)>();
+
+            foreach (var scopeGroup in rows.GroupBy(x => x.Scope))
+            {
+                var phieuList = scopeGroup
+                    .GroupBy(x => x.Id_Phieu)
+                    .Select(g => new
+                    {
+                        NgaySX = g.First().NgaySX,
+                        Ca = g.First().Ca,
+                        ByPhuLieu = g.ToDictionary(x => x.PhuLieuID),
+                    })
+                    .OrderBy(x => x.NgaySX)
+                    .ThenBy(x => x.Ca)
+                    .ToList();
+
+                for (var i = 1; i < phieuList.Count; i++)
+                {
+                    var prevPhieu = phieuList[i - 1];
+                    var currPhieu = phieuList[i];
+
+                    var allPhuLieuIds = prevPhieu.ByPhuLieu.Keys
+                        .Union(currPhieu.ByPhuLieu.Keys)
+                        .OrderBy(id =>
+                        {
+                            var thuTu = (prevPhieu.ByPhuLieu.TryGetValue(id, out var pv) ? pv.ThuTu : null)
+                                        ?? (currPhieu.ByPhuLieu.TryGetValue(id, out var cv) ? cv.ThuTu : null);
+                            return thuTu ?? int.MaxValue;
+                        })
+                        .ThenBy(id => id);
+
+                    foreach (var phuLieuId in allPhuLieuIds)
+                    {
+                        prevPhieu.ByPhuLieu.TryGetValue(phuLieuId, out var prevDetail);
+                        currPhieu.ByPhuLieu.TryGetValue(phuLieuId, out var currDetail);
+
+                        var row = new STD_NXT_HRC1_NhapXuatTonRow
+                        {
+                            NgaySXTruoc = prevDetail != null ? prevPhieu.NgaySX : null,
+                            CaTruoc = prevDetail != null ? prevPhieu.Ca : null,
+                            PhuLieuTruoc = prevDetail?.TenNguyenLieu,
+                            TonCuoiTruoc = prevDetail?.TonCuoiCa,
+
+                            NgaySXSau = currDetail != null ? currPhieu.NgaySX : null,
+                            CaSau = currDetail != null ? currPhieu.Ca : null,
+                            PhuLieuSau = currDetail?.TenNguyenLieu,
+                            TonDauSau = currDetail?.TonDauCa,
+                        };
+
+                        buffer.Add((row, currPhieu.NgaySX, currPhieu.Ca));
+                    }
+                }
+            }
+
+            return buffer
+                .OrderBy(x => x.SortDate)
+                .ThenBy(x => x.SortCa)
+                .Select(x => x.Row)
+                .ToList();
         }
 
         public async Task<bool> KhongPhanBoAsync(STD_NXT_HRC1_KhongPhanBoDto entity)

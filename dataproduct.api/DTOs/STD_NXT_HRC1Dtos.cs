@@ -105,4 +105,27 @@ namespace dataproduct.api.DTOs
         public DateTime NgaySX { get; set; }
         public int Ca { get; set; }
     }
+
+    public class STD_NXT_HRC1_NhapXuatTonSearchRequest
+    {
+        public DateTime TuNgay { get; set; }
+        public DateTime DenNgay { get; set; }
+    }
+
+    /// <summary>
+    /// 1 dòng so sánh giữa Tồn cuối của phiếu ca trước và Tồn đầu của phiếu ca kế tiếp,
+    /// cùng Scope (tổ hợp Lò thổi/Tinh luyện) + PhuLieuID — dùng để đối chiếu tính liên tục của sổ.
+    /// </summary>
+    public class STD_NXT_HRC1_NhapXuatTonRow
+    {
+        public DateTime? NgaySXTruoc { get; set; }
+        public int? CaTruoc { get; set; }
+        public string? PhuLieuTruoc { get; set; }
+        public decimal? TonCuoiTruoc { get; set; }
+
+        public DateTime? NgaySXSau { get; set; }
+        public int? CaSau { get; set; }
+        public string? PhuLieuSau { get; set; }
+        public decimal? TonDauSau { get; set; }
+    }
 }

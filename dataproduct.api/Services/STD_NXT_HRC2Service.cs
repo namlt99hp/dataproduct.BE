@@ -44,5 +44,10 @@ namespace dataproduct.api.Services
             return await _repo.KhongPhanBoAsync(entity);
         }
 
+        public async Task<List<STD_NXT_HRC2_NhapXuatTonRow>> GetNhapXuatTonAsync(STD_NXT_HRC2_NhapXuatTonSearchRequest request)
+        {
+            return await _repo.GetNhapXuatTonAsync(request);
+        }
+
     }
 }
