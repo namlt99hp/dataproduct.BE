@@ -269,6 +269,15 @@ namespace dataproduct.api.Services
             if (req.DichChuyen == "len_thang" && (me.TrangThaiTL ?? 0) >= 1)
                 throw new InvalidOperationException("Tinh luyện đã nhận mẻ này. Chỉ có thể chọn tinh luyện để tham khảo, không thể chuyển sang lên thẳng.");
 
+            // Ngược lại: nếu Đúc đã xác nhận mẻ lên thẳng thì không được chuyển sang tinh luyện nữa.
+            // Nhánh previouslyLenThang bên dưới sẽ reset IdMayDucDich (thuộc về TL) — nếu vẫn cho đổi
+            // trong khi TrangThaiDuc = 1, mẻ mất hẳn liên kết với máy đúc đã xác nhận (Đúc xác định mẻ
+            // của mình bằng IdMayDucDich, không qua bảng phân công) nhưng vẫn mang trạng thái "đã xác
+            // nhận" — kẹt vĩnh viễn: không máy đúc nào còn thấy để Bỏ xác nhận, TL cũng không sửa được
+            // (UpdateMePhanCongAsync chặn khi TrangThaiDuc >= 1). Phải Bỏ xác nhận đúc trước.
+            if (req.DichChuyen == "tinh_luyen" && me.DichChuyen == "len_thang" && (me.TrangThaiDuc ?? 0) >= 1)
+                throw new InvalidOperationException("Máy đúc đã xác nhận mẻ này. Cần Bỏ xác nhận đúc trước khi chuyển sang tinh luyện.");
+
             // Đã có xác nhận/không xác nhận PCN ở máy đúc — phải Reset xác nhận PCN về null trước khi đổi Thử nghiệm
             if (req.IsThuNghiem.HasValue && req.IsThuNghiem != me.IsThuNghiem && me.TrangThaiPCN != null)
                 throw new InvalidOperationException("Mẻ đã có xác nhận/không xác nhận PCN. Cần Reset xác nhận PCN trước khi đổi Thử nghiệm.");
@@ -544,6 +553,12 @@ namespace dataproduct.api.Services
 
             if (me.DichChuyen == "len_thang")
                 throw new InvalidOperationException("Lò thổi đã chỉ định mẻ này lên thẳng máy đúc, không thể nhận vào tinh luyện.");
+
+            // Phòng hờ mẻ vừa được lò thổi chuyển len_thang → tinh_luyen trong khi Đúc đã xác nhận
+            // (đáng lẽ đã bị chặn ở UpdateMeAsync) — không cho TL nhận đè lên trạng thái Đúc còn treo,
+            // tránh lặp lại đúng lỗi "mẻ vô định" (TrangThaiDuc=1 nhưng mất IdMayDucDich).
+            if ((me.TrangThaiDuc ?? 0) >= 1)
+                throw new InvalidOperationException("Máy đúc đã xác nhận mẻ này, không thể nhận vào tinh luyện.");
 
             // Mẻ chưa được lò thổi chọn đích (DichChuyen = null) → tự động gán tinh_luyen khi TL nhận
             if (string.IsNullOrEmpty(me.DichChuyen))
