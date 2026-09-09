@@ -81,6 +81,9 @@ namespace dataproduct.api.DTOs
         public string? MaVatTu { get; set; }
         public string? TenVatTu { get; set; }
 
+        // Đã qua "Sửa slab thủ công" (tồn tại record Hrc1SlabEdit) — FE dùng để highlight dòng.
+        public bool IsManualEdited { get; set; }
+
         // Workflow (LEFT JOIN HRC1_Slab_TrangThai)
         public bool IsChuyenCa { get; set; }
         public Guid? IdPhieuGoc { get; set; }

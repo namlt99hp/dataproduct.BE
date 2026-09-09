@@ -94,6 +94,7 @@ public partial class ProductFormContext : DbContext
     // HRC1 Slab
     public virtual DbSet<Hrc1Slab> Hrc1Slabs { get; set; }
     public virtual DbSet<Hrc1SlabTrangThai> Hrc1SlabTrangThais { get; set; }
+    public virtual DbSet<Hrc1SlabEdit> Hrc1SlabEdits { get; set; }
     public virtual DbSet<MaVatTu> MaVatTus { get; set; }
     public virtual DbSet<Hrc1MaVatTu> Hrc1MaVatTus { get; set; }
     public virtual DbSet<Hrc1BbslTongHopGhiChu> Hrc1BbslTongHopGhiChus { get; set; }
@@ -1099,6 +1100,17 @@ public partial class ProductFormContext : DbContext
             entity.Property(e => e.NgayXacNhanCan).HasColumnType("datetime");
             entity.Property(e => e.NgayXacNhanC4).HasColumnType("datetime");
             entity.Property(e => e.NgayChotPKH).HasColumnType("datetime");
+        });
+
+        // Bảng phụ lưu IDSlab đã sửa tay — xem comment trên Hrc1SlabEdit.
+        modelBuilder.Entity<Hrc1SlabEdit>(entity =>
+        {
+            entity.ToTable("HRC1_Slab_Edit");
+            entity.HasIndex(e => e.IdSlab).IsUnique();
+            // Cột DB đặt tên IDSlabMoi (khác IdSlab) vì SQL Server mặc định collation không phân
+            // biệt hoa/thường — "IdSlab" và "IDSlab" bị coi là trùng tên cột (xem hrc1_slab_edit.sql).
+            entity.Property(e => e.IDSlab).HasColumnName("IDSlabMoi").HasMaxLength(50).IsRequired();
+            entity.Property(e => e.NgayCapNhat).HasColumnType("datetime");
         });
 
         OnModelCreatingPartial(modelBuilder);

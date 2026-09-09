@@ -43,6 +43,17 @@ namespace dataproduct.api.Repositories
                     .ToDictionaryAsync(t => t.IdSlab)
                 : new Dictionary<int, Hrc1SlabTrangThai>();
 
+            // Slab đã qua "Sửa slab thủ công" (có record Hrc1SlabEdit) → khóa vĩnh viễn khỏi ghi đè
+            // Sync cho MỌI field dữ liệu (IDPiece/MaMe/MacThep/MayDuc/CutDate/ChieuDay/Rong/Dai/
+            // KhoiLuong), không chỉ IDSlab — user đã tự tay xác nhận dữ liệu đúng thì Sync không
+            // được ghi đè lại nữa, kể cả khi slab chưa cắt xong (CutDate vẫn null).
+            var manualEditedIds = existingInternalIds.Count > 0
+                ? (await _context.Hrc1SlabEdits
+                    .Where(e => existingInternalIds.Contains(e.IdSlab))
+                    .Select(e => e.IdSlab)
+                    .ToListAsync()).ToHashSet()
+                : [];
+
             int upserted = 0;
             int macThepFilled = 0;
             foreach (var item in items)
@@ -63,7 +74,8 @@ namespace dataproduct.api.Repositories
                         || slab.CutDate.HasValue
                         || tt?.TrangThaiCan == 1
                         || tt?.TrangThaiC4 == true
-                        || tt?.TrangThaiPKH == 1) continue;
+                        || tt?.TrangThaiPKH == 1
+                        || manualEditedIds.Contains(slab.Id)) continue;
 
                     slab.IDPiece = item.PIECE_ID;
                     slab.MaMe = item.HEAT_ID;
@@ -137,7 +149,14 @@ namespace dataproduct.api.Repositories
             if (!string.IsNullOrEmpty(req.KipSX))   query = query.Where(s => s.KipSX == req.KipSX);
             if (!string.IsNullOrEmpty(req.MayDuc))  query = query.Where(s => s.MayDuc == req.MayDuc);
             if (!string.IsNullOrEmpty(req.MaMe))    query = query.Where(s => s.MaMe!.Contains(req.MaMe));
-            if (!string.IsNullOrEmpty(req.IDSlab))  query = query.Where(s => s.IDSlab.Contains(req.IDSlab));
+            if (!string.IsNullOrEmpty(req.IDSlab))
+            {
+                // So khớp theo IDSlab hiệu lực (đã sửa tay nếu có) — xem Hrc1SlabEdit.
+                var idSlabTerm = req.IDSlab;
+                query = query.Where(s =>
+                    (_context.Hrc1SlabEdits.Where(e => e.IdSlab == s.Id).Select(e => e.IDSlab).FirstOrDefault() ?? s.IDSlab)
+                        .Contains(idSlabTerm));
+            }
             if (!string.IsNullOrEmpty(req.MacThep)) query = query.Where(s => s.MacThep!.Contains(req.MacThep));
             if (req.IsChot.HasValue)
                 query = req.IsChot.Value
@@ -167,10 +186,14 @@ namespace dataproduct.api.Repositories
                 .OrderByDescending(s => s.NgaySX)
                 .ThenByDescending(s => s.CaSX)
                 .ThenBy(s => s.MayDuc)
-                .ThenBy(s => s.IDSlab)
+                .ThenBy(s => _context.Hrc1SlabEdits.Where(e => e.IdSlab == s.Id).Select(e => e.IDSlab).FirstOrDefault() ?? s.IDSlab)
                 .Skip((req.Page - 1) * req.PageSize)
                 .Take(req.PageSize)
                 .ToListAsync();
+
+            // Overlay IDSlab đã sửa tay lên object in-memory (AsNoTracking, không ảnh hưởng DB) để
+            // MapToItem bên dưới trả về đúng giá trị hiệu lực.
+            await ApplyIdSlabOverridesAsync(slabs);
 
             var slabInternalIds = slabs.Select(s => s.Id).ToList();
             var ttMap = slabInternalIds.Count > 0
@@ -193,6 +216,7 @@ namespace dataproduct.api.Repositories
                 : new Dictionary<Guid, BmPhieu>();
 
             var maVatTuMap = await GetMaVatTuLookupAsync(slabs.Select(s => s.MacThep));
+            var manualEditedIds = await GetManualEditedIdsAsync(slabInternalIds);
 
             var items = slabs.Select(s =>
             {
@@ -200,7 +224,7 @@ namespace dataproduct.api.Repositories
                 BmPhieu? phieu = null;
                 if (tt?.IdPhieuBBSL != null) phieuMap.TryGetValue(tt.IdPhieuBBSL.Value, out phieu);
                 maVatTuMap.TryGetValue(s.MacThep ?? "", out var mvt);
-                return MapToItem(s, tt, phieu, ResolveMaVatTu(s, tt, mvt), mvt?.TenVatTu);
+                return MapToItem(s, tt, phieu, ResolveMaVatTu(s, tt, mvt), mvt?.TenVatTu, manualEditedIds.Contains(s.Id));
             });
 
             return (items, total);
@@ -383,14 +407,20 @@ namespace dataproduct.api.Repositories
                     .ToDictionaryAsync(s => s.Id)
                 : new Dictionary<int, Hrc1Slab>();
 
+            // Overlay IDSlab đã sửa tay lên object in-memory (xem Hrc1SlabEdit) trước khi map DTO.
+            await ApplyIdSlabOverridesAsync(naturalSlabs.Concat(transferredSlabMap.Values));
+
             var maVatTuMap = await GetMaVatTuLookupAsync(
                 naturalSlabs.Select(s => s.MacThep).Concat(transferredSlabMap.Values.Select(s => s.MacThep)));
+
+            var manualEditedIds = await GetManualEditedIdsAsync(
+                naturalSlabs.Select(s => s.Id).Concat(transferredSlabMap.Values.Select(s => s.Id)));
 
             var naturalItems = naturalSlabs.Select(s =>
             {
                 naturalTTMap.TryGetValue(s.Id, out var tt);
                 maVatTuMap.TryGetValue(s.MacThep ?? "", out var mvt);
-                return MapToItem(s, tt, null, ResolveMaVatTu(s, tt, mvt), mvt?.TenVatTu);
+                return MapToItem(s, tt, null, ResolveMaVatTu(s, tt, mvt), mvt?.TenVatTu, manualEditedIds.Contains(s.Id));
             });
 
             var transferredItems = transferredTTs
@@ -399,7 +429,7 @@ namespace dataproduct.api.Repositories
                 {
                     var s = transferredSlabMap[t.IdSlab];
                     maVatTuMap.TryGetValue(s.MacThep ?? "", out var mvt);
-                    return MapToItem(s, t, null, ResolveMaVatTu(s, t, mvt), mvt?.TenVatTu);
+                    return MapToItem(s, t, null, ResolveMaVatTu(s, t, mvt), mvt?.TenVatTu, manualEditedIds.Contains(s.Id));
                 });
 
             return naturalItems.Concat(transferredItems)
@@ -852,8 +882,7 @@ namespace dataproduct.api.Repositories
                 throw new InvalidOperationException("Phiếu đã chốt, không thể thêm slab mới.");
 
             var idSlab = req.IDSlab.Trim();
-            var trung = await _context.Hrc1Slabs.AnyAsync(s => s.IDSlab == idSlab);
-            if (trung)
+            if (await IsIDSlabTrungAsync(idSlab, excludeId: null))
                 throw new InvalidOperationException($"ID Slab '{idSlab}' đã tồn tại.");
 
             var slab = new Hrc1Slab
@@ -885,6 +914,14 @@ namespace dataproduct.api.Repositories
         // ── Sửa slab thủ công (tab "Chi tiết slab") ────────────────────────────
         // Full-replace toàn bộ field nhập tay (mirror CreateSlabAsync) khi user bấm "Sửa" trên popup —
         // khác UpdateSlabAsync ở trên (chỉ patch GhiChu/MaVatTu cho inline-edit, xem comment DTO).
+        //
+        // IDSlab KHÔNG ghi đè trực tiếp lên HRC1_Slab — lưu vào bảng phụ Hrc1SlabEdit (xem comment
+        // trên class đó) để cột gốc luôn bất biến, không phá khóa đối chiếu của UpsertFromApiAsync.
+        //
+        // Record Hrc1SlabEdit LUÔN được giữ lại (kể cả khi IDSlab sửa về đúng giá trị gốc) — sự
+        // tồn tại của nó còn đóng vai trò "đã qua sửa tay" để UpsertFromApiAsync khóa vĩnh viễn
+        // KHÔNG ghi đè lại các field khác (IDPiece/MaMe/MacThep/MayDuc/CutDate/ChieuDay/Rong/Dai/
+        // KhoiLuong) ở những lần Sync sau, kể cả khi slab chưa cắt xong/chưa xác nhận.
         public async Task EditSlabAsync(int id, Hrc1SlabEditRequest req)
         {
             if (string.IsNullOrWhiteSpace(req.IDSlab))
@@ -900,11 +937,20 @@ namespace dataproduct.api.Repositories
                 throw new InvalidOperationException("Slab thuộc phiếu đã chốt, không thể chỉnh sửa.");
 
             var idSlab = req.IDSlab.Trim();
-            var trung = await _context.Hrc1Slabs.AnyAsync(s => s.IDSlab == idSlab && s.Id != id);
-            if (trung)
+            if (await IsIDSlabTrungAsync(idSlab, excludeId: id))
                 throw new InvalidOperationException($"ID Slab '{idSlab}' đã tồn tại.");
 
-            slab.IDSlab = idSlab;
+            var edit = await _context.Hrc1SlabEdits.FirstOrDefaultAsync(e => e.IdSlab == id);
+            if (edit == null)
+            {
+                _context.Hrc1SlabEdits.Add(new Hrc1SlabEdit { IdSlab = id, IDSlab = idSlab, NgayCapNhat = DateTime.Now });
+            }
+            else
+            {
+                edit.IDSlab = idSlab;
+                edit.NgayCapNhat = DateTime.Now;
+            }
+
             slab.IDPiece = req.IDPiece;
             slab.MaMe = req.MaMe;
             slab.MacThep = req.MacThep;
@@ -1044,12 +1090,68 @@ namespace dataproduct.api.Repositories
                     .ToListAsync()
                 : [];
 
-            return natural.Concat(transferred).ToList();
+            var all = natural.Concat(transferred).ToList();
+            // Overlay IDSlab đã sửa tay (xem Hrc1SlabEdit) — dùng cho export Excel/PDF đọc trực
+            // tiếp entity này. Thứ tự sort ở trên vẫn theo IDSlab gốc (không ảnh hưởng GetRuotPhieuAsync
+            // vì hàm đó GROUP BY MaMe/MacThep, không theo IDSlab).
+            await ApplyIdSlabOverridesAsync(all);
+            return all;
+        }
+
+        // ── Helper: IDSlab đã sửa tay (Hrc1SlabEdit) ──────────────────────────
+
+        // Ghi đè IDSlab trong bộ nhớ (các slab truyền vào phải AsNoTracking, không ảnh hưởng DB)
+        // bằng giá trị đã sửa tay nếu có — mọi nơi hiển thị/xuất dữ liệu gọi hàm này ngay sau khi
+        // load Hrc1Slab để luôn thấy đúng giá trị hiệu lực, trong khi cột gốc trên HRC1_Slab không
+        // đổi (giữ đúng khóa đối chiếu cho UpsertFromApiAsync/Sync — xem comment Hrc1SlabEdit).
+        private async Task ApplyIdSlabOverridesAsync(IEnumerable<Hrc1Slab> slabs)
+        {
+            var ids = slabs.Select(s => s.Id).Distinct().ToList();
+            if (ids.Count == 0) return;
+
+            var overrides = await _context.Hrc1SlabEdits
+                .AsNoTracking()
+                .Where(e => ids.Contains(e.IdSlab))
+                .ToDictionaryAsync(e => e.IdSlab, e => e.IDSlab);
+            if (overrides.Count == 0) return;
+
+            foreach (var s in slabs)
+                if (overrides.TryGetValue(s.Id, out var idSlab))
+                    s.IDSlab = idSlab;
+        }
+
+        // Trả về tập Id (nội bộ) các slab đã qua "Sửa slab thủ công" (có record Hrc1SlabEdit) —
+        // dùng để set Hrc1SlabItem.IsManualEdited cho FE highlight dòng.
+        private async Task<HashSet<int>> GetManualEditedIdsAsync(IEnumerable<int> ids)
+        {
+            var idList = ids.Distinct().ToList();
+            if (idList.Count == 0) return [];
+            return (await _context.Hrc1SlabEdits
+                .AsNoTracking()
+                .Where(e => idList.Contains(e.IdSlab))
+                .Select(e => e.IdSlab)
+                .ToListAsync()).ToHashSet();
+        }
+
+        // Kiểm tra idSlab có trùng với IDSlab hiệu lực (đã sửa tay nếu có, không thì lấy gốc) của
+        // một slab KHÁC hay không — dùng cho validate ở CreateSlabAsync (excludeId: null) và
+        // EditSlabAsync (excludeId: id đang sửa).
+        private async Task<bool> IsIDSlabTrungAsync(string idSlab, int? excludeId)
+        {
+            var trungOverride = await _context.Hrc1SlabEdits
+                .AnyAsync(e => e.IDSlab == idSlab && (excludeId == null || e.IdSlab != excludeId));
+            if (trungOverride) return true;
+
+            var overriddenIds = await _context.Hrc1SlabEdits.Select(e => e.IdSlab).ToListAsync();
+            return await _context.Hrc1Slabs.AnyAsync(s =>
+                s.IDSlab == idSlab
+                && !overriddenIds.Contains(s.Id)
+                && (excludeId == null || s.Id != excludeId));
         }
 
         // ── Helper: map model → DTO ───────────────────────────────────────────
 
-        private static Hrc1SlabItem MapToItem(Hrc1Slab s, Hrc1SlabTrangThai? tt, BmPhieu? phieu, string? maVatTu, string? tenVatTu)
+        private static Hrc1SlabItem MapToItem(Hrc1Slab s, Hrc1SlabTrangThai? tt, BmPhieu? phieu, string? maVatTu, string? tenVatTu, bool isManualEdited = false)
         {
             return new Hrc1SlabItem
             {
@@ -1072,6 +1174,7 @@ namespace dataproduct.api.Repositories
                 GhiChu = s.GhiChu,
                 MaVatTu = maVatTu,
                 TenVatTu = tenVatTu,
+                IsManualEdited = isManualEdited,
                 IsChuyenCa = tt?.IsChuyenCa ?? false,
                 IdPhieuGoc = tt?.IdPhieuGoc,
                 TrangThaiDuc = tt?.TrangThaiDuc ?? 0,

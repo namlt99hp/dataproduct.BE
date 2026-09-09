@@ -33,7 +33,7 @@ public class Hrc1BbgnPhoiTamEnricher : IPhieuSearchEnricher, IPhieuTinhTrangFilt
 
         var naturalIds = await _context.Hrc1Slabs
             .AsNoTracking()
-            .Where(s => s.NgaySX == item.NgaySX && s.CaSX == caStr
+            .Where(s => s.NgaySX == item.NgaySX && s.CaSX == caStr && !s.IsDeleted
                         && !_context.Hrc1SlabTrangThais.Any(t => t.IdSlab == s.Id && t.IsChuyenCa))
             .Select(s => s.Id)
             .ToListAsync();
@@ -45,10 +45,13 @@ public class Hrc1BbgnPhoiTamEnricher : IPhieuSearchEnricher, IPhieuTinhTrangFilt
                 .ToDictionaryAsync(t => t.IdSlab)
             : new Dictionary<int, Hrc1SlabTrangThai>();
 
-        var transferredRecords = await _context.Hrc1SlabTrangThais
-            .AsNoTracking()
-            .Where(t => t.IsChuyenCa && t.IdPhieuBBSL == item.Idphieu)
-            .ToListAsync();
+        // Join Hrc1Slabs để loại slab đã xóa mềm (xem Hrc1SlabRepository.ChotPhieuAsync)
+        var transferredRecords = await (
+            from t in _context.Hrc1SlabTrangThais.AsNoTracking()
+            join s in _context.Hrc1Slabs.AsNoTracking() on t.IdSlab equals s.Id
+            where t.IsChuyenCa && t.IdPhieuBBSL == item.Idphieu && !s.IsDeleted
+            select t
+        ).ToListAsync();
 
         // Số lượng ID Slab đã xác nhận theo từng bộ phận (Đúc/Cán/C4/PKH) trên tổng số ID Slab
         // của phiếu — tính cho MỌI phiếu, kể cả đã chốt (TinhTrang == 5), vì UI danh sách phiếu
@@ -96,7 +99,7 @@ public class Hrc1BbgnPhoiTamEnricher : IPhieuSearchEnricher, IPhieuTinhTrangFilt
         var naturalSlabs = ngaySXSet.Count > 0
             ? await _context.Hrc1Slabs
                 .AsNoTracking()
-                .Where(s => s.NgaySX.HasValue && ngaySXSet.Contains(s.NgaySX.Value))
+                .Where(s => s.NgaySX.HasValue && ngaySXSet.Contains(s.NgaySX.Value) && !s.IsDeleted)
                 .Select(s => new { s.Id, s.NgaySX, s.CaSX })
                 .ToListAsync()
             : [];
@@ -118,10 +121,13 @@ public class Hrc1BbgnPhoiTamEnricher : IPhieuSearchEnricher, IPhieuTinhTrangFilt
                 .ToDictionaryAsync(t => t.IdSlab)
             : new Dictionary<int, Hrc1SlabTrangThai>();
 
-        var transferredAll = await _context.Hrc1SlabTrangThais
-            .AsNoTracking()
-            .Where(t => t.IsChuyenCa && t.IdPhieuBBSL != null && idphieuSet.Contains(t.IdPhieuBBSL.Value))
-            .ToListAsync();
+        // Join Hrc1Slabs để loại slab đã xóa mềm (xem Hrc1SlabRepository.ChotPhieuAsync)
+        var transferredAll = await (
+            from t in _context.Hrc1SlabTrangThais.AsNoTracking()
+            join s in _context.Hrc1Slabs.AsNoTracking() on t.IdSlab equals s.Id
+            where t.IsChuyenCa && t.IdPhieuBBSL != null && idphieuSet.Contains(t.IdPhieuBBSL.Value) && !s.IsDeleted
+            select t
+        ).ToListAsync();
         var transferredByPhieu = transferredAll
             .GroupBy(t => t.IdPhieuBBSL!.Value)
             .ToDictionary(g => g.Key, g => g.ToList());

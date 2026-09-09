@@ -1639,13 +1639,52 @@ namespace dataproduct.api.Repositories
             if (!raw.Any())
                 return Enumerable.Empty<FilterSTD_NXTResponse>();
 
-            // SP đã trả về ID_HeaderKey, TenPhuLieu (fallback TenHienThi), TotalKLPhuGia
-            // Group theo BieuMau + Scope + ID_HeaderKey
-            var grouped = raw.GroupBy(x => new
+            // KHÔNG tin ID_HeaderKey do SP trả về — cột đó là snapshot lấy từ PhuLieu_HRC2.ID_HeaderKey,
+            // được ghi 1 lần lúc PhuLieu_HRC2 được tạo và KHÔNG bao giờ cập nhật lại khi Header_Mapping
+            // đổi sau đó (vd tách phụ liệu A/B từ chung 1 Header_Key A1 ra 2 Header_Key A1/B1 riêng —
+            // "Làm mới" vẫn sum A+B vào A1 nếu tin thẳng cột này). Re-map lại theo ID_PhuLieu, LUÔN đọc
+            // Header_Mapping HIỆN TẠI mỗi lần gọi để phản ánh đúng mapping mới nhất — mirror đúng cách
+            // làm cũ (xem block code comment phía trên, trước khi đổi sang tin thẳng SP).
+            var phuLieuIds = raw.Where(x => (x.ID_PhuLieu ?? 0) > 0)
+                .Select(x => x.ID_PhuLieu!.Value)
+                .Distinct()
+                .ToList();
+
+            var mappings = phuLieuIds.Count > 0
+                ? await _context.Header_Mappings.Where(m => phuLieuIds.Contains(m.ID_PhuLieu)).ToListAsync()
+                : new List<Header_Mapping>();
+            // GroupBy + First thay vì ToDictionary trực tiếp: phòng trường hợp 1 ID_PhuLieu lỡ có
+            // 2 mapping cùng lúc (ExistsAsync chỉ check trùng đúng cặp PhuLieu+HeaderKey, không chặn
+            // 1 phụ liệu trỏ nhiều HeaderKey), tránh crash duplicate-key.
+            var mappingByPhuLieu = mappings
+                .GroupBy(m => m.ID_PhuLieu)
+                .ToDictionary(g => g.Key, g => g.First());
+
+            var headerKeyIds = mappings.Select(m => m.ID_HeaderKey).Distinct().ToList();
+            var headerKeys = headerKeyIds.Count > 0
+                ? await _context.Header_Keys.Where(k => headerKeyIds.Contains(k.Id)).ToDictionaryAsync(k => k.Id)
+                : new Dictionary<int, Header_Key>();
+
+            var resolved = raw.Select(x =>
             {
-                x.BieuMau,
-                x.Scope,
-                x.ID_HeaderKey
+                int? headerKeyId = null;
+                var headerKeyName = x.TenPhuLieu;
+                if ((x.ID_PhuLieu ?? 0) > 0 && mappingByPhuLieu.TryGetValue(x.ID_PhuLieu!.Value, out var map))
+                {
+                    headerKeyId = map.ID_HeaderKey;
+                    if (headerKeys.TryGetValue(map.ID_HeaderKey, out var hk))
+                        headerKeyName = hk.TenHienThi;
+                }
+                return new { Raw = x, ID_HeaderKey = headerKeyId, TenPhuLieu = headerKeyName };
+            }).ToList();
+
+            // Group theo BieuMau + Scope + ID_HeaderKey — phụ liệu chưa mapping (null) tách riêng
+            // theo ID_PhuLieu để không gộp nhầm nhiều phụ liệu chưa map khác nhau vào chung 1 nhóm.
+            var grouped = resolved.GroupBy(x => new
+            {
+                x.Raw.BieuMau,
+                x.Raw.Scope,
+                Key = x.ID_HeaderKey.HasValue ? $"HK_{x.ID_HeaderKey}" : $"PL_{x.Raw.ID_PhuLieu}"
             });
 
             //var result = grouped.Select(g =>
@@ -1676,18 +1715,18 @@ namespace dataproduct.api.Repositories
 
                 return new FilterSTD_NXTResponse
                 {
-                    BieuMau = first.BieuMau ?? "",
-                    Scope = first.Scope ?? 0,
+                    BieuMau = first.Raw.BieuMau ?? "",
+                    Scope = first.Raw.Scope ?? 0,
                     HeaderKeyId = first.ID_HeaderKey,
                     HeaderKeyName = first.TenPhuLieu ?? "",
-                    TotalKLPhuGia = g.Sum(x => x.TotalKLPhuGia ?? 0),
+                    TotalKLPhuGia = g.Sum(x => x.Raw.TotalKLPhuGia ?? 0),
                     PhuLieus = g
-                        .Where(x => (x.ID_PhuLieu ?? 0) > 0)
-                        .GroupBy(x => x.ID_PhuLieu ?? 0)
+                        .Where(x => (x.Raw.ID_PhuLieu ?? 0) > 0)
+                        .GroupBy(x => x.Raw.ID_PhuLieu ?? 0)
                         .Select(pl => new PhuLieuNM
                         {
                             ID_PhuLieu = pl.Key,
-                            TenPhuLieu = pl.First().TenPhuLieu ?? ""
+                            TenPhuLieu = pl.First().Raw.TenPhuLieu ?? ""
                         })
                         .ToList()
                 };
