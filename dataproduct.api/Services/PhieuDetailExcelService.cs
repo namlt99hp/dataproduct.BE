@@ -583,59 +583,132 @@ namespace dataproduct.api.Services
                 using var doc = JsonDocument.Parse(dataJson);
                 var root = doc.RootElement;
 
-                if (!root.TryGetProperty("table1", out var table1) || table1.ValueKind != JsonValueKind.Array)
-                    return (resultById, resultByMeThoi);
-
-                foreach (var row in table1.EnumerateArray())
+                if (root.TryGetProperty("table1", out var table1) && table1.ValueKind == JsonValueKind.Array)
                 {
-                    string? meThoi = row.TryGetProperty("meThoi", out var meProp) && meProp.ValueKind == JsonValueKind.String
-                        ? meProp.GetString()
-                        : null;
-
-                    long? rowId = null;
-                    if (row.TryGetProperty("id", out var idProp))
+                    foreach (var row in table1.EnumerateArray())
                     {
-                        if (idProp.ValueKind == JsonValueKind.Number && idProp.TryGetInt64(out var idNum))
-                            rowId = idNum;
-                        else if (idProp.ValueKind == JsonValueKind.String &&
-                                 long.TryParse(idProp.GetString(), out var idParsed))
-                            rowId = idParsed;
-                    }
+                        string? meThoi = row.TryGetProperty("meThoi", out var meProp) && meProp.ValueKind == JsonValueKind.String
+                            ? meProp.GetString()
+                            : null;
 
-                    if (rowId == null && string.IsNullOrWhiteSpace(meThoi)) continue;
-
-                    var rowOverrides = new Dictionary<int, double?>();
-
-                    foreach (var prop in row.EnumerateObject())
-                    {
-                        if (!prop.Name.EndsWith("__IsManual", StringComparison.Ordinal)) continue;
-                        if (prop.Value.ValueKind != JsonValueKind.True) continue;
-
-                        var baseKey = prop.Name[..^"__IsManual".Length]; // e.g. "phuLieu_5"
-                        if (!baseKey.StartsWith("phuLieu_", StringComparison.Ordinal)) continue;
-                        if (!int.TryParse(baseKey["phuLieu_".Length..], out var headerKeyId)) continue;
-
-                        double? val = null;
-                        if (row.TryGetProperty(baseKey, out var valProp))
+                        long? rowId = null;
+                        if (row.TryGetProperty("id", out var idProp))
                         {
-                            if (valProp.ValueKind == JsonValueKind.Number)
-                                val = valProp.GetDouble();
-                            else if (valProp.ValueKind == JsonValueKind.String &&
-                                     double.TryParse(valProp.GetString(),
-                                         System.Globalization.NumberStyles.Any,
-                                         System.Globalization.CultureInfo.InvariantCulture, out var d))
-                                val = d;
+                            if (idProp.ValueKind == JsonValueKind.Number && idProp.TryGetInt64(out var idNum))
+                                rowId = idNum;
+                            else if (idProp.ValueKind == JsonValueKind.String &&
+                                     long.TryParse(idProp.GetString(), out var idParsed))
+                                rowId = idParsed;
                         }
-                        rowOverrides[headerKeyId] = val;
+
+                        if (rowId == null && string.IsNullOrWhiteSpace(meThoi)) continue;
+
+                        var rowOverrides = new Dictionary<int, double?>();
+
+                        foreach (var prop in row.EnumerateObject())
+                        {
+                            if (!prop.Name.EndsWith("__IsManual", StringComparison.Ordinal)) continue;
+                            if (prop.Value.ValueKind != JsonValueKind.True) continue;
+
+                            var baseKey = prop.Name[..^"__IsManual".Length]; // e.g. "phuLieu_5"
+                            if (!baseKey.StartsWith("phuLieu_", StringComparison.Ordinal)) continue;
+                            if (!int.TryParse(baseKey["phuLieu_".Length..], out var headerKeyId)) continue;
+
+                            double? val = null;
+                            if (row.TryGetProperty(baseKey, out var valProp))
+                            {
+                                if (valProp.ValueKind == JsonValueKind.Number)
+                                    val = valProp.GetDouble();
+                                else if (valProp.ValueKind == JsonValueKind.String &&
+                                         double.TryParse(valProp.GetString(),
+                                             System.Globalization.NumberStyles.Any,
+                                             System.Globalization.CultureInfo.InvariantCulture, out var d))
+                                    val = d;
+                            }
+                            rowOverrides[headerKeyId] = val;
+                        }
+
+                        if (rowOverrides.Count == 0) continue;
+
+                        // Khoá theo id khi có (giống FE); chỉ fallback về meThoi khi row không có id.
+                        if (rowId.HasValue)
+                            resultById[rowId.Value] = rowOverrides;
+                        else if (!string.IsNullOrWhiteSpace(meThoi))
+                            resultByMeThoi[meThoi] = rowOverrides;
                     }
+                }
 
-                    if (rowOverrides.Count == 0) continue;
+                // table1DynamicColumns.adjust: giá trị của các cột "Thêm cột điều chỉnh" (nút thêm tay
+                // trong màn Tạo/Chi tiết phiếu, dataIndex "manual_col_{headerKeyId}"). FE xoá hết field
+                // manual_col_* khỏi table1[] trước khi lưu (HRC2PhuLieuService.sanitizeRowsBeforeSubmit)
+                // và chỉ lưu giá trị ở đây (table1DynamicColumns.adjust[].values[], build bởi
+                // buildAdjustDynamicWithValues) — nên PHẢI đọc riêng, không nằm trong vòng lặp table1[]
+                // ở trên. Thiếu đoạn này thì cột "điều chỉnh" luôn trống khi export dù UI hiển thị đủ.
+                if (root.TryGetProperty("table1DynamicColumns", out var dynCols) &&
+                    dynCols.ValueKind == JsonValueKind.Object &&
+                    dynCols.TryGetProperty("adjust", out var adjustArr) &&
+                    adjustArr.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var meta in adjustArr.EnumerateArray())
+                    {
+                        if (!meta.TryGetProperty("headerKeyId", out var hkProp) ||
+                            hkProp.ValueKind != JsonValueKind.Number)
+                            continue;
+                        var headerKeyId = hkProp.GetInt32();
 
-                    // Khoá theo id khi có (giống FE); chỉ fallback về meThoi khi row không có id.
-                    if (rowId.HasValue)
-                        resultById[rowId.Value] = rowOverrides;
-                    else if (!string.IsNullOrWhiteSpace(meThoi))
-                        resultByMeThoi[meThoi] = rowOverrides;
+                        if (!meta.TryGetProperty("values", out var valuesArr) ||
+                            valuesArr.ValueKind != JsonValueKind.Array)
+                            continue;
+
+                        foreach (var v in valuesArr.EnumerateArray())
+                        {
+                            long? rowId = null;
+                            if (v.TryGetProperty("rowId", out var rowIdProp) &&
+                                rowIdProp.ValueKind == JsonValueKind.Number &&
+                                rowIdProp.TryGetInt64(out var rid))
+                                rowId = rid;
+
+                            string? meThoi = v.TryGetProperty("meThoi", out var meThoiProp) &&
+                                             meThoiProp.ValueKind == JsonValueKind.String
+                                ? meThoiProp.GetString()
+                                : null;
+
+                            if (rowId == null && string.IsNullOrWhiteSpace(meThoi)) continue;
+
+                            double? val = null;
+                            if (v.TryGetProperty("value", out var valProp))
+                            {
+                                if (valProp.ValueKind == JsonValueKind.Number)
+                                    val = valProp.GetDouble();
+                                else if (valProp.ValueKind == JsonValueKind.String &&
+                                         double.TryParse(valProp.GetString(),
+                                             System.Globalization.NumberStyles.Any,
+                                             System.Globalization.CultureInfo.InvariantCulture, out var d))
+                                    val = d;
+                            }
+
+                            // Khoá theo id khi có (giống FE); chỉ fallback về meThoi khi không có id.
+                            // Merge vào dict đã có (không ghi đè) để không mất override phuLieu_ ở trên.
+                            if (rowId.HasValue)
+                            {
+                                if (!resultById.TryGetValue(rowId.Value, out var dict))
+                                {
+                                    dict = new Dictionary<int, double?>();
+                                    resultById[rowId.Value] = dict;
+                                }
+                                dict[headerKeyId] = val;
+                            }
+                            else if (!string.IsNullOrWhiteSpace(meThoi))
+                            {
+                                if (!resultByMeThoi.TryGetValue(meThoi, out var dict))
+                                {
+                                    dict = new Dictionary<int, double?>();
+                                    resultByMeThoi[meThoi] = dict;
+                                }
+                                dict[headerKeyId] = val;
+                            }
+                        }
+                    }
                 }
             }
             catch
@@ -1420,6 +1493,8 @@ namespace dataproduct.api.Services
         {
             int s = GetPhuLieuStartCol("BOF"); // 6
 
+            ws.Range(r, 1, r, lastCol).Style.Font.Bold = true;
+
             ws.Range(r, 1, r, 3).Merge();
             ws.Cell(r, 1).Value                      = "Tổng cộng";
             ws.Cell(r, 1).Style.Font.Bold            = true;
@@ -1455,6 +1530,8 @@ namespace dataproduct.api.Services
         {
             int s = GetPhuLieuStartCol("LF"); // 5
 
+            ws.Range(r, 1, r, lastCol).Style.Font.Bold = true;
+
             ws.Range(r, 1, r, 3).Merge();
             ws.Cell(r, 1).Value                      = "Tổng cộng";
             ws.Cell(r, 1).Style.Font.Bold            = true;
@@ -1488,6 +1565,8 @@ namespace dataproduct.api.Services
             List<HRC2ThongKeRow> rows)
         {
             int s = GetPhuLieuStartCol("RH"); // 5
+
+            ws.Range(r, 1, r, lastCol).Style.Font.Bold = true;
 
             ws.Range(r, 1, r, 3).Merge();
             ws.Cell(r, 1).Value                      = "Tổng cộng";
