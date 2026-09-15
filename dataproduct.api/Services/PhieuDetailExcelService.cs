@@ -113,6 +113,53 @@ namespace dataproduct.api.Services
 
             var headers = isBofExcel ? headersBOF : (isRhExcel ? headersRH : headersLF);
 
+            // Phiếu Chốt dùng snapshot cột Excel chụp ĐÚNG lúc chốt (TryGetChotSnapshotHeadersAsync).
+            // Nếu user cấu hình Excel cho Header_Key (IsUsed_Excel/LoaiExcel/LoaiPhieu/ThuTu_Excel_*)
+            // SAU KHI phiếu đã chốt, snapshot cũ không có header đó dù phiếu vẫn tham chiếu đúng
+            // headerKeyId trong table1DynamicColumns.adjust (cột "Thêm cột điều chỉnh") → cột biến
+            // mất khỏi Excel dù cấu hình hiện tại đã đúng. Bổ sung các headerKeyId này (đọc trực
+            // tiếp từ DataJson của CHÍNH phiếu, không phụ thuộc snapshot/config Excel) vào headers
+            // nếu còn thiếu, lấy tên/loại phiếu HIỆN TẠI từ Header_Keys (lúc lưu, table1DynamicColumns
+            // .adjust[] không lưu loaiPhieu — xem LoadDataJsonOverridesAsync). Chạy cả khi phiếu CHƯA
+            // chốt để làm lưới an toàn chung (no-op nếu header đã có sẵn trong headers).
+            var manualAdjustHeaderIds = await GetManualAdjustHeaderKeyIdsAsync(idPhieu);
+            if (manualAdjustHeaderIds.Count > 0)
+            {
+                var existingIds = headers.Select(h => h.IDHeaderKey).ToHashSet();
+                var missingIds = manualAdjustHeaderIds.Where(id => !existingIds.Contains(id)).ToList();
+                if (missingIds.Count > 0)
+                {
+                    var missingHeaderKeys = await _context.Header_Keys
+                        .Where(h => missingIds.Contains(h.Id))
+                        .Select(h => new { h.Id, h.TenHienThi, h.LoaiPhieu })
+                        .ToListAsync();
+
+                    foreach (var hk in missingHeaderKeys)
+                    {
+                        // LF render theo 2 khối KL/PG liền nhau (RenderColumnHeaders_LF) — header không
+                        // thuộc 1 trong 2 nhóm này thì bỏ qua để tránh vỡ colspan merge, giống ràng
+                        // buộc của headers cấu hình sẵn (GetLiveExcelHeadersAsync).
+                        if (!isBofExcel && !isRhExcel && hk.LoaiPhieu != "KL" && hk.LoaiPhieu != "PG")
+                            continue;
+
+                        headers.Add(new PhuLieuHeaderTable
+                        {
+                            IDHeaderKey = hk.Id,
+                            TenPhuLieu = hk.TenHienThi,
+                            LoaiPhieu = hk.LoaiPhieu
+                        });
+                    }
+
+                    if (!isBofExcel && !isRhExcel)
+                    {
+                        headersLF = headersLF
+                            .OrderBy(h => h.LoaiPhieu == "KL" ? 0 : h.LoaiPhieu == "PG" ? 1 : 2)
+                            .ToList();
+                        headers = headersLF;
+                    }
+                }
+            }
+
             if (!headersBOF.Any() && !headersLF.Any() && !headersRH.Any())
                 return (headersBOF, headersLF, headersRH, new List<HRC2ThongKeRow>());
 
@@ -552,6 +599,54 @@ namespace dataproduct.api.Services
                 // DataJson parse lỗi → trả về null, caller fallback về live headers, không chặn export
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Đọc DataJson.table1DynamicColumns.adjust[].headerKeyId của phiếu — danh sách headerKeyId
+        /// của các cột "Thêm cột điều chỉnh" do user thêm tay (isManuallyAdded), bất kể Header_Key đó
+        /// có được cấu hình dùng cho Excel hay không / có nằm trong snapshot lúc Chốt hay không. Dùng
+        /// để đảm bảo cột này luôn có mặt trên Excel một khi phiếu đã lưu dữ liệu cho nó (xem
+        /// GetExportDataAsync).
+        /// </summary>
+        private async Task<HashSet<int>> GetManualAdjustHeaderKeyIdsAsync(Guid? idPhieu)
+        {
+            var result = new HashSet<int>();
+            if (!idPhieu.HasValue) return result;
+
+            var dataJson = await _context.BmPhieus
+                .AsNoTracking()
+                .Where(p => p.Idphieu == idPhieu.Value)
+                .Select(p => p.DataJson)
+                .FirstOrDefaultAsync();
+
+            if (string.IsNullOrWhiteSpace(dataJson)) return result;
+
+            try
+            {
+                using var doc = JsonDocument.Parse(dataJson);
+                var root = doc.RootElement;
+
+                if (root.TryGetProperty("table1DynamicColumns", out var dynCols) &&
+                    dynCols.ValueKind == JsonValueKind.Object &&
+                    dynCols.TryGetProperty("adjust", out var adjustArr) &&
+                    adjustArr.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var meta in adjustArr.EnumerateArray())
+                    {
+                        if (meta.TryGetProperty("headerKeyId", out var hkProp) &&
+                            hkProp.ValueKind == JsonValueKind.Number)
+                        {
+                            result.Add(hkProp.GetInt32());
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // DataJson parse lỗi → bỏ qua, không chặn export
+            }
+
+            return result;
         }
 
         /// <summary>
