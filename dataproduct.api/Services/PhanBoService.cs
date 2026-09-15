@@ -134,7 +134,9 @@ namespace dataproduct.api.Services
             foreach (var locaoGroup in bienBans.GroupBy(b => b.IDLoCao))
             {
                 var idLoCao = locaoGroup.Key;
-                var eList = await _napLieuRepo.GetNapLieuAsync(ngay, idLoCao);
+                // Than cốc (Cvh/ThanCoc10) lấy E chưa quy khô — Qhlc vẫn quy khô như cũ
+                var apDungQuyKho = loaiPhanBo != (byte)LoaiPhanBoEnum.Cvh && loaiPhanBo != (byte)LoaiPhanBoEnum.ThanCoc10;
+                var eList = await _napLieuRepo.GetNapLieuAsync(ngay, idLoCao, apDungQuyKho);
 
                 foreach (var bienBan in locaoGroup)
                 {
