@@ -2331,7 +2331,7 @@ namespace dataproduct.api.Services
                 foreach (var item in footerData)
                 {
                     sb.Append("<tr>");
-                    sb.Append($"<td colspan=\"{siloSpan}\" class=\"td-left\">{System.Net.WebUtility.HtmlEncode(item.TenNguyenLieu ?? "")}</td>");
+                    sb.Append($"<td colspan=\"{siloSpan}\" class=\"td-left\">Lượng {System.Net.WebUtility.HtmlEncode(item.TenNguyenLieu ?? "")}</td>");
                     sb.Append($"<td colspan=\"{g1Span}\">{PFmt(item.TonDauCa)}</td>");
                     sb.Append($"<td colspan=\"{g2Span}\">{PFmt(item.NhapVaoTrongCa)}</td>");
                     sb.Append($"<td colspan=\"{g3Span}\">{PFmt(item.TonCuoiCa)}</td>");
