@@ -74,6 +74,16 @@ namespace dataproduct.api.Controllers
             return Ok(data);
         }
 
+        /// <summary>Dữ liệu cho màn Thống kê sản lượng slab (ThongKeSlab.tsx) — riêng biệt với Search.
+        /// Bắt buộc chọn 1 ngày (+ ca tùy chọn); BE gom nhóm (pivot) sẵn theo (MayDuc, MacThep,
+        /// MeThep, OrderId, NgayXuLy, KipBBSL) trước khi trả về.</summary>
+        [HttpPost("thong-ke-slab")]
+        public async Task<IActionResult> GetThongKeSlab([FromBody] Hrc2ThongKeSlabRequest request)
+        {
+            var data = await _svc.GetThongKeSlabAsync(request);
+            return Ok(data);
+        }
+
         // ── KCS Workflow ─────────────────────────────────────────────────────
 
         [HttpPost("chuyen-bbsl")]

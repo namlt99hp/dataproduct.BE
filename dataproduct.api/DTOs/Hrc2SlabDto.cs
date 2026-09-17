@@ -95,6 +95,99 @@ namespace dataproduct.api.DTOs
         public decimal? TongKhoiLuong { get; set; }
     }
 
+    // ── Thống kê slab (ThongKeSlab.tsx) — API riêng, KHÔNG dùng chung với Hrc2SlabSearchRequest/Item.
+    // Gom nhóm (pivot) thực hiện ở BE — chỉ cho tìm theo 1 ngày (bắt buộc) + ca, để lượng dữ liệu xử
+    // lý trong 1 lần gọi luôn nhỏ. Sẽ bổ sung thêm logic lấy HangCXL / TyLeTieuHao (chưa xác định
+    // nguồn, tạm để null).
+    public class Hrc2ThongKeSlabRequest
+    {
+        public string Ngay { get; set; } = "";  // bắt buộc, "yyyy-MM-dd" — ngày lên BBSL (BM_Phieu.NgaySX)
+        public int? Ca { get; set; }            // ca của phiếu BBSL (BM_Phieu.Ca), không truyền = tất cả ca
+    }
+
+    // 1 dòng đã gom theo (MayDuc, MacThep, MeThep, OrderId, NgayXuLy, KipBBSL). Tên field dùng
+    // JsonPropertyName khớp đúng dataIndex của bảng FE (ThongKeSlab.tsx) — không theo camelCase mặc định
+    // vì FE dùng tiền tố "pn_"/"png_" (phôi nóng/nguội) + hậu tố "_kl"/"_st" (khối lượng/số tấm).
+    public class Hrc2ThongKeSlabRow
+    {
+        public int? Ca { get; set; }
+        public string? NgayLenBBSL { get; set; }
+        public string? KipLenBBSL { get; set; }
+        public int? MayDuc { get; set; }
+        public int? Lo { get; set; }
+        public string? MacThep { get; set; }
+        public string? MeThep { get; set; }
+        public string? Lsx { get; set; }
+        public decimal TongSanLuongPhoi { get; set; }
+        // Chưa có nguồn dữ liệu — để null, bổ sung logic sau.
+        public string? HangCXL { get; set; }
+        public decimal? TyLeTieuHao { get; set; }
+
+        // ── Phôi nóng ──
+        [System.Text.Json.Serialization.JsonPropertyName("pn_kichThuoc")]
+        public string PnKichThuoc { get; set; } = "";
+        [System.Text.Json.Serialization.JsonPropertyName("pn_kichThuoc_st")]
+        public int PnKichThuocSt { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("pn_loai1_kl")]
+        public decimal PnLoai1Kl { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("pn_loai1_st")]
+        public int PnLoai1St { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("pn_loai2_kl")]
+        public decimal PnLoai2Kl { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("pn_loai2_st")]
+        public int PnLoai2St { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("pn_loai2Tphh_kl")]
+        public decimal PnLoai2TphhKl { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("pn_loai2Tphh_st")]
+        public int PnLoai2TphhSt { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("pn_loai3_kl")]
+        public decimal PnLoai3Kl { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("pn_loai3_st")]
+        public int PnLoai3St { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("pn_loai3Tphh_kl")]
+        public decimal PnLoai3TphhKl { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("pn_loai3Tphh_st")]
+        public int PnLoai3TphhSt { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("pn_nganDai_kl")]
+        public decimal PnNganDaiKl { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("pn_nganDai_st")]
+        public int PnNganDaiSt { get; set; }
+
+        // ── Phôi nguội ── ("Loại 2 giao thoa" và "Phế phẩm" chưa có nguồn dữ liệu — không có field)
+        [System.Text.Json.Serialization.JsonPropertyName("png_loai1_kl")]
+        public decimal PngLoai1Kl { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("png_loai1_st")]
+        public int PngLoai1St { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("png_loai2_kl")]
+        public decimal PngLoai2Kl { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("png_loai2_st")]
+        public int PngLoai2St { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("png_loai2Tphh_kl")]
+        public decimal PngLoai2TphhKl { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("png_loai2Tphh_st")]
+        public int PngLoai2TphhSt { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("png_loai3_kl")]
+        public decimal PngLoai3Kl { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("png_loai3_st")]
+        public int PngLoai3St { get; set; }
+        // Không có "ST" cho Loại 3 TPHH nguội (khớp đúng cột FE hiện tại).
+        [System.Text.Json.Serialization.JsonPropertyName("png_loai3Tphh_kl")]
+        public decimal PngLoai3TphhKl { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("png_kichThuoc")]
+        public string PngKichThuoc { get; set; } = "";
+        [System.Text.Json.Serialization.JsonPropertyName("png_kichThuoc_st")]
+        public int PngKichThuocSt { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("png_nganDai_kl")]
+        public decimal PngNganDaiKl { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("png_nganDai_st")]
+        public int PngNganDaiSt { get; set; }
+
+        [System.Text.Json.Serialization.JsonIgnore]
+        public HashSet<string> PnKichThuocSet { get; } = [];
+        [System.Text.Json.Serialization.JsonIgnore]
+        public HashSet<string> PngKichThuocSet { get; } = [];
+    }
+
     public class Hrc2PhieuBBSLItem
     {
         public Guid IdPhieu { get; set; }

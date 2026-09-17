@@ -60,6 +60,9 @@ namespace dataproduct.api.Services
         public Task<IEnumerable<Hrc2SlabItem>> GetSlabsByPhieuAsync(Guid idPhieu, int? currentUserId = null)
             => _repo.GetSlabsByPhieuAsync(idPhieu, currentUserId);
 
+        public Task<IEnumerable<Hrc2ThongKeSlabRow>> GetThongKeSlabAsync(Hrc2ThongKeSlabRequest req)
+            => _repo.GetThongKeSlabAsync(req);
+
         public Task CheckAsync(Hrc2SlabCheckRequest req)
             => _repo.CheckAsync(req.IdSlabs, req.NguoiThucHien);
 

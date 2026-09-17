@@ -3,6 +3,7 @@ using dataproduct.api.Models;
 using dataproduct.api.Models.MasterData;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using System.Text.RegularExpressions;
 
 namespace dataproduct.api.Repositories
 {
@@ -113,6 +114,139 @@ namespace dataproduct.api.Repositories
 
             var items = await AttachTrangThaiAsync(slabs, null);
             return (items, total);
+        }
+
+        // ── Thống kê slab (ThongKeSlab.tsx) ─────────────────────────────────────
+        // API riêng cho màn Thống kê, KHÔNG dùng chung với SearchAsync. Chỉ tìm theo 1 ngày bắt
+        // buộc (+ ca tùy chọn) để lượng dữ liệu xử lý trong 1 lần gọi luôn nhỏ, và GOM NHÓM (pivot)
+        // ngay tại BE theo (MayDuc, MacThep, MeThep, OrderId, NgayXuLy, KipBBSL) — trả về sẵn dòng
+        // đã tổng hợp, FE chỉ render thẳng, không tự pivot nữa (khác SearchAsync).
+        public async Task<IEnumerable<Hrc2ThongKeSlabRow>> GetThongKeSlabAsync(Hrc2ThongKeSlabRequest req)
+        {
+            if (!DateOnly.TryParse(req.Ngay, out var ngay))
+                return [];
+
+            var phieuQuery = _context.BmPhieus.AsNoTracking()
+                .Where(p => p.MaBm == MaBm && p.NgaySX == ngay);
+            if (req.Ca.HasValue)
+                phieuQuery = phieuQuery.Where(p => p.Ca == req.Ca);
+
+            var phieuList = await phieuQuery.ToListAsync();
+            if (phieuList.Count == 0) return [];
+            var phieuMap = phieuList.ToDictionary(p => p.Idphieu);
+            var phieuIds = phieuList.Select(p => p.Idphieu).ToList();
+
+            var trangThais = await _context.BkHrc2SlabTrangThais.AsNoTracking()
+                .Include(t => t.Slab)
+                .Where(t => t.TrangThaiKCS == 1 && t.IdPhieuBBSL != null && phieuIds.Contains(t.IdPhieuBBSL.Value))
+                .ToListAsync();
+
+            var map = new Dictionary<string, Hrc2ThongKeSlabRow>();
+            foreach (var tt in trangThais)
+            {
+                var slab = tt.Slab;
+                if (slab == null) continue;
+                var phieu = phieuMap[tt.IdPhieuBBSL!.Value];
+
+                var key = $"{slab.MayDuc}|{slab.MacThep}|{slab.MeThep}|{slab.OrderId}|{phieu.NgaySX}|{phieu.Kip}";
+                if (!map.TryGetValue(key, out var row))
+                {
+                    row = new Hrc2ThongKeSlabRow
+                    {
+                        Ca = phieu.Ca,
+                        NgayLenBBSL = phieu.NgaySX?.ToString("yyyy-MM-dd"),
+                        KipLenBBSL = phieu.Kip,
+                        MayDuc = slab.MayDuc,
+                        Lo = GetLo(slab.MeThep),
+                        MacThep = slab.MacThep,
+                        MeThep = slab.MeThep,
+                        Lsx = slab.OrderId,
+                    };
+                    map[key] = row;
+                }
+
+                var kl = slab.KhoiLuong ?? 0;
+                row.TongSanLuongPhoi += kl;
+
+                var kt = (slab.ChieuDay != null && slab.ChieuRong != null && slab.ChieuDai != null)
+                    ? $"{slab.ChieuDay}x{slab.ChieuRong}x{slab.ChieuDai}"
+                    : null;
+
+                var loai = ClassifyLoaiPhoi(slab.LoaiPhoi);
+                if (loai == "nong")
+                {
+                    row.PnKichThuocSt++;
+                    if (kt != null) row.PnKichThuocSet.Add(kt);
+                }
+                else if (loai == "nguoi")
+                {
+                    row.PngKichThuocSt++;
+                    if (kt != null) row.PngKichThuocSet.Add(kt);
+                }
+
+                ApplyPhanLoai(row, loai, slab.PhanLoai, kl);
+            }
+
+            foreach (var row in map.Values)
+            {
+                row.PnKichThuoc = string.Join(", ", row.PnKichThuocSet);
+                row.PngKichThuoc = string.Join(", ", row.PngKichThuocSet);
+            }
+
+            return map.Values;
+        }
+
+        // "Lò" suy từ ký tự thứ 3 của Mẻ thép: "G" → Lò 6, "F" → Lò 7 — giống logic ở FE trước khi
+        // chuyển gom nhóm về BE (ThongKeSlab.tsx).
+        private static int? GetLo(string? meThep)
+        {
+            if (string.IsNullOrEmpty(meThep) || meThep.Length < 3) return null;
+            return char.ToUpperInvariant(meThep[2]) switch { 'G' => 6, 'F' => 7, _ => null };
+        }
+
+        // Nóng/nguội xác định từ LoaiPhoi (field thô từ BKMIS) — giống GetPivotKeys() ở
+        // Hrc2SlabService.cs (dùng cho báo cáo Excel/PDF tổng hợp).
+        private static string? ClassifyLoaiPhoi(string? loaiPhoi)
+        {
+            var lp = loaiPhoi ?? "";
+            if (Regex.IsMatch(lp, "nguội|nguoi", RegexOptions.IgnoreCase)) return "nguoi";
+            if (Regex.IsMatch(lp, "nóng|nong", RegexOptions.IgnoreCase)) return "nong";
+            return null;
+        }
+
+        // Mã PhanLoai (L1/L2/L2TP/L3/L3TP/ND) → cộng dồn đúng cặp cột pn_/png_ theo nóng/nguội.
+        // PP không có cột (theo yêu cầu để trống) nhưng vẫn được cộng vào TongSanLuongPhoi ở trên.
+        private static void ApplyPhanLoai(Hrc2ThongKeSlabRow row, string? loai, string? phanLoai, decimal kl)
+        {
+            if (loai == null || phanLoai == null) return;
+            var isNong = loai == "nong";
+            switch (phanLoai)
+            {
+                case "L1":
+                    if (isNong) { row.PnLoai1St++; row.PnLoai1Kl += kl; }
+                    else { row.PngLoai1St++; row.PngLoai1Kl += kl; }
+                    break;
+                case "L2":
+                    if (isNong) { row.PnLoai2St++; row.PnLoai2Kl += kl; }
+                    else { row.PngLoai2St++; row.PngLoai2Kl += kl; }
+                    break;
+                case "L2TP":
+                    if (isNong) { row.PnLoai2TphhSt++; row.PnLoai2TphhKl += kl; }
+                    else { row.PngLoai2TphhSt++; row.PngLoai2TphhKl += kl; }
+                    break;
+                case "L3":
+                    if (isNong) { row.PnLoai3St++; row.PnLoai3Kl += kl; }
+                    else { row.PngLoai3St++; row.PngLoai3Kl += kl; }
+                    break;
+                case "L3TP":
+                    if (isNong) { row.PnLoai3TphhSt++; row.PnLoai3TphhKl += kl; }
+                    else row.PngLoai3TphhKl += kl; // Nguội không có cột ST cho Loại 3 TPHH
+                    break;
+                case "ND":
+                    if (isNong) { row.PnNganDaiSt++; row.PnNganDaiKl += kl; }
+                    else { row.PngNganDaiSt++; row.PngNganDaiKl += kl; }
+                    break;
+            }
         }
 
         // ── Tổng hợp (GROUP BY) ───────────────────────────────────────────────
