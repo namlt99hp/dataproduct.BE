@@ -484,3 +484,6 @@ $RECYCLE.BIN/
 *.swp
 
 dataproduct.api/.claude
+
+appsettings.Development.json
+appsettings.Local.json
