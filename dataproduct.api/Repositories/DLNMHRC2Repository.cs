@@ -1660,7 +1660,14 @@ namespace dataproduct.api.Repositories
                 .GroupBy(m => m.ID_PhuLieu)
                 .ToDictionary(g => g.Key, g => g.First());
 
-            var headerKeyIds = mappings.Select(m => m.ID_HeaderKey).Distinct().ToList();
+            // Dòng thêm tay (manual_col_*, IsAddManual) KHÔNG có ID_PhuLieu nên không re-map được qua
+            // Header_Mapping — HeaderKey của chúng chính là PhuLieu_HRC2.ID_HeaderKey do FE lưu (vd cột
+            // điều chỉnh tay ở TaoPhieuRH), nên với các dòng này phải dùng thẳng ID_HeaderKey SP trả về.
+            var manualHeaderKeyIds = raw
+                .Where(x => (x.ID_PhuLieu ?? 0) <= 0 && (x.ID_HeaderKey ?? 0) > 0)
+                .Select(x => x.ID_HeaderKey!.Value);
+
+            var headerKeyIds = mappings.Select(m => m.ID_HeaderKey).Concat(manualHeaderKeyIds).Distinct().ToList();
             var headerKeys = headerKeyIds.Count > 0
                 ? await _context.Header_Keys.Where(k => headerKeyIds.Contains(k.Id)).ToDictionaryAsync(k => k.Id)
                 : new Dictionary<int, Header_Key>();
@@ -1669,12 +1676,18 @@ namespace dataproduct.api.Repositories
             {
                 int? headerKeyId = null;
                 var headerKeyName = x.TenPhuLieu;
-                if ((x.ID_PhuLieu ?? 0) > 0 && mappingByPhuLieu.TryGetValue(x.ID_PhuLieu!.Value, out var map))
+                if ((x.ID_PhuLieu ?? 0) > 0)
                 {
-                    headerKeyId = map.ID_HeaderKey;
-                    if (headerKeys.TryGetValue(map.ID_HeaderKey, out var hk))
-                        headerKeyName = hk.TenHienThi;
+                    if (mappingByPhuLieu.TryGetValue(x.ID_PhuLieu!.Value, out var map))
+                        headerKeyId = map.ID_HeaderKey;
                 }
+                else if ((x.ID_HeaderKey ?? 0) > 0)
+                {
+                    headerKeyId = x.ID_HeaderKey;
+                }
+
+                if (headerKeyId.HasValue && headerKeys.TryGetValue(headerKeyId.Value, out var hk))
+                    headerKeyName = hk.TenHienThi;
                 return new { Raw = x, ID_HeaderKey = headerKeyId, TenPhuLieu = headerKeyName };
             }).ToList();
 
