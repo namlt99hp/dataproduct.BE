@@ -129,6 +129,54 @@ namespace dataproduct.api.Repositories
             return (decimal)plRows.Sum(x => x.IsManual == true ? (x.KLPhuGia_Manual ?? 0) : (x.KLPhuGia ?? 0));
         }
 
+        /// <summary>
+        /// Tính lượng sử dụng thực tế HIỆN TẠI của 1 Id_HeaderKey theo từng công đoạn (BOF/LF/RH) trong đúng
+        /// Ngày/Ca, thẳng từ PhuLieu_HRC2 (chỉ dòng đo thật IsPhanBo != true) — cùng cách nhận diện như
+        /// ComputeTongThucTeHienTaiAsync. Dùng để chặn phân bổ tỷ lệ > 0 cho công đoạn không còn sử dụng
+        /// phụ liệu (VD: phiếu Nấu Luyện đã hiệu chỉnh chuyển lượng dùng sang công đoạn khác nhưng tổng không đổi,
+        /// nên BƯỚC 1.5 không phát hiện được).
+        /// </summary>
+        private async Task<(decimal Bof, decimal Lf, decimal Rh)> ComputeSuDungTheoCongDoanAsync(DateTime ngaySX, int ca, int idHeaderKey)
+        {
+            var dlnmRows = await _context.DLNM_HRC2s
+                .Where(x => x.Ngay == ngaySX && x.Ca == ca && x.IsDelete != true)
+                .Select(x => new { x.ID, x.BieuMau })
+                .ToListAsync();
+
+            if (dlnmRows.Count == 0) return (0, 0, 0);
+
+            var bieuMauByMeId = dlnmRows.ToDictionary(x => x.ID, x => x.BieuMau);
+            var meIds = dlnmRows.Select(x => x.ID).ToList();
+
+            var mappedPhuLieuIds = await _context.Header_Mappings
+                .Where(hm => hm.ID_HeaderKey == idHeaderKey)
+                .Select(hm => hm.ID_PhuLieu)
+                .ToListAsync();
+
+            var plRows = await _context.PhuLieu_HRC2s
+                .Where(pl =>
+                    meIds.Contains(pl.ID_MeThoi) &&
+                    (pl.IsPhanBo != true) &&
+                    (
+                        (pl.ID_PhuLieu.HasValue && mappedPhuLieuIds.Contains(pl.ID_PhuLieu.Value)) ||
+                        pl.ID_HeaderKey == idHeaderKey
+                    ))
+                .Select(pl => new { pl.ID_MeThoi, pl.IsManual, pl.KLPhuGia, pl.KLPhuGia_Manual })
+                .ToListAsync();
+
+            decimal bof = 0, lf = 0, rh = 0;
+            foreach (var pl in plRows)
+            {
+                if (!bieuMauByMeId.TryGetValue(pl.ID_MeThoi, out var bieuMau) || bieuMau == null) continue;
+                var value = (decimal)(pl.IsManual == true ? (pl.KLPhuGia_Manual ?? 0) : (pl.KLPhuGia ?? 0));
+                if (bieuMau.StartsWith("BOF", StringComparison.OrdinalIgnoreCase)) bof += value;
+                else if (bieuMau.StartsWith("LF", StringComparison.OrdinalIgnoreCase)) lf += value;
+                else if (bieuMau.StartsWith("RH", StringComparison.OrdinalIgnoreCase)) rh += value;
+            }
+
+            return (bof, lf, rh);
+        }
+
         public async Task<STD_NXT_HRC2_UpsertResponse> UpsertAsync(STD_NXT_HRC2_UpsertDto entity)
         {
            try
@@ -889,6 +937,38 @@ namespace dataproduct.api.Repositories
                     if (tyLeBOF == null) tyLeBOF = tyLeRecord?.TyLeBOF;
                     if (tyLeTinhLuyen == null) tyLeTinhLuyen = tyLeRecord?.TyLeTinhLuyen;
                     if (tyLeRH == null) tyLeRH = tyLeRecord?.TyLeRH;
+                }
+
+                // ========== BƯỚC 5.0: Validate tỷ lệ theo lượng sử dụng thực tế HIỆN TẠI từng công đoạn ==========
+                // Không tin số liệu trên màn hình (có thể lỗi thời nếu phiếu Nấu Luyện vừa hiệu chỉnh mà Sổ XNT chưa "Làm mới").
+                if (tyLeBOF != null || tyLeTinhLuyen != null || tyLeRH != null)
+                {
+                    const string lamMoiHint = "Số liệu phiếu Nấu Luyện có thể đã thay đổi, vui lòng bấm \"Làm mới\" rồi \"Lưu\" lại Sổ Xuất-Nhập-Tồn trước khi phân bổ.";
+                    var (suDungBof, suDungLf, suDungRh) = await ComputeSuDungTheoCongDoanAsync(entity.NgaySX, entity.Ca, entity.Id_HeaderKey);
+
+                    if (suDungBof == 0 && suDungLf == 0 && suDungRh == 0)
+                        throw new Exception($"Phụ liệu này hiện không được sử dụng ở công đoạn nào trong ca, không thể phân bổ. {lamMoiHint}");
+
+                    if (suDungBof == 0 && tyLeBOF is decimal vBof && vBof != 0)
+                        throw new Exception($"Phụ liệu này hiện không sử dụng ở BOF nhưng tỷ lệ BOF đang là {vBof}%. {lamMoiHint}");
+
+                    if (tyLeRH == null)
+                    {
+                        // Dữ liệu cũ chưa tách LF/RH: tỷ lệ tinh luyện áp cho LF+RH gộp
+                        if (suDungLf + suDungRh == 0 && tyLeTinhLuyen is decimal vTL && vTL != 0)
+                            throw new Exception($"Phụ liệu này hiện không sử dụng ở tinh luyện nhưng tỷ lệ tinh luyện đang là {vTL}%. {lamMoiHint}");
+                    }
+                    else
+                    {
+                        if (suDungLf == 0 && tyLeTinhLuyen is decimal vLf && vLf != 0)
+                            throw new Exception($"Phụ liệu này hiện không sử dụng ở LF nhưng tỷ lệ LF đang là {vLf}%. {lamMoiHint}");
+                        if (suDungRh == 0 && tyLeRH is decimal vRh && vRh != 0)
+                            throw new Exception($"Phụ liệu này hiện không sử dụng ở RH nhưng tỷ lệ RH đang là {vRh}%. {lamMoiHint}");
+                    }
+
+                    var tongTyLe = (tyLeBOF ?? 0) + (tyLeTinhLuyen ?? 0) + (tyLeRH ?? 0);
+                    if (Math.Abs(tongTyLe - 100) > 0.001m)
+                        throw new Exception($"Tổng tỷ lệ phân bổ phải bằng 100% (hiện tại: {tongTyLe}%).");
                 }
 
                 Dictionary<long, decimal> klPhanBoByMeThoi;

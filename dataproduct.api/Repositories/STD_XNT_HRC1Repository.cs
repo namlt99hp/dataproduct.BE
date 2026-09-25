@@ -55,6 +55,39 @@ namespace dataproduct.api.Repositories
         }
 
         /// <summary>
+        /// Tính lượng sử dụng thực tế HIỆN TẠI của 1 PhuLieuID theo từng công đoạn (BOF/LF) trong đúng Ngày/Ca —
+        /// cùng nguồn/điều kiện lọc với ComputeTongThucTeHienTaiAsync, tách theo BieuMau của mẻ. Dùng để chặn phân bổ
+        /// tỷ lệ > 0 cho công đoạn không còn sử dụng phụ liệu (VD: phiếu Tiêu Hao đã hiệu chỉnh chuyển lượng dùng
+        /// sang công đoạn khác nhưng tổng không đổi, nên BƯỚC 1.5 không phát hiện được).
+        /// </summary>
+        private async Task<(decimal Bof, decimal Lf)> ComputeSuDungTheoCongDoanAsync(DateOnly ngaySX, int ca, int phuLieuID)
+        {
+            var caByte = (byte)ca;
+            var raw = await (
+                from pl in _context.Hrc1PhuLieus
+                join tieuHao in _context.Hrc1TieuHaos on pl.MeID equals tieuHao.ID
+                where tieuHao.NgaySanXuat == ngaySX
+                      && tieuHao.Ca == caByte
+                      && tieuHao.IsDeleted == false
+                      && pl.IsDeleted == false
+                      && pl.IsPhanBo == false
+                      && pl.PhuLieuID == phuLieuID
+                      && (tieuHao.IDPhieu == null ||
+                          _context.BmPhieus.Any(p => p.Idphieu == tieuHao.IDPhieu && p.IsLock != 1 && p.IsDelete != 1))
+                select new { tieuHao.BieuMau, pl.IsManual, pl.KLPhuGia, pl.KLPhuGia_Manual }
+            ).ToListAsync();
+
+            decimal bof = 0, lf = 0;
+            foreach (var x in raw)
+            {
+                var value = x.IsManual ? (x.KLPhuGia_Manual ?? 0) : (x.KLPhuGia ?? 0);
+                if (string.Equals(x.BieuMau, "BOF", StringComparison.OrdinalIgnoreCase)) bof += value;
+                else if (string.Equals(x.BieuMau, "LF", StringComparison.OrdinalIgnoreCase)) lf += value;
+            }
+            return (bof, lf);
+        }
+
+        /// <summary>
         /// Chia totalAmount cho các phần tử trong ids: (N-1) phần tử đầu nhận giá trị làm tròn
         /// Math.Round(totalAmount / ids.Count), phần tử CUỐI nhận phần dư (totalAmount - tổng đã gán).
         /// Đảm bảo tổng các phần luôn khớp CHÍNH XÁC totalAmount, tránh lệch tích lũy khi làm tròn
@@ -812,6 +845,25 @@ namespace dataproduct.api.Repositories
 
                     if (tyLeBOF == null) tyLeBOF = tyLeRecord?.TyLeBOF;
                     if (tyLeLF == null) tyLeLF = tyLeRecord?.TyLeLF;
+                }
+
+                // ========== BƯỚC 5.0: Validate tỷ lệ theo lượng sử dụng thực tế HIỆN TẠI từng công đoạn ==========
+                // Không tin số liệu trên màn hình (có thể lỗi thời nếu phiếu Tiêu Hao vừa hiệu chỉnh mà Sổ XNT chưa "Làm mới").
+                if (tyLeBOF != null || tyLeLF != null)
+                {
+                    const string lamMoiHint = "Số liệu phiếu Tiêu Hao có thể đã thay đổi, vui lòng bấm \"Làm mới\" rồi \"Lưu\" lại Sổ Xuất-Nhập-Tồn trước khi phân bổ.";
+                    var (suDungBof, suDungLf) = await ComputeSuDungTheoCongDoanAsync(ngaySXDate, entity.Ca, entity.PhuLieuID);
+
+                    if (suDungBof == 0 && suDungLf == 0)
+                        throw new Exception($"Phụ liệu này hiện không được sử dụng ở công đoạn nào trong ca, không thể phân bổ. {lamMoiHint}");
+                    if (suDungBof == 0 && tyLeBOF is decimal vBof && vBof != 0)
+                        throw new Exception($"Phụ liệu này hiện không sử dụng ở BOF nhưng tỷ lệ BOF đang là {vBof}%. {lamMoiHint}");
+                    if (suDungLf == 0 && tyLeLF is decimal vLf && vLf != 0)
+                        throw new Exception($"Phụ liệu này hiện không sử dụng ở LF nhưng tỷ lệ LF đang là {vLf}%. {lamMoiHint}");
+
+                    var tongTyLe = (tyLeBOF ?? 0) + (tyLeLF ?? 0);
+                    if (Math.Abs(tongTyLe - 100) > 0.001m)
+                        throw new Exception($"Tổng tỷ lệ phân bổ phải bằng 100% (hiện tại: {tongTyLe}%).");
                 }
 
                 Dictionary<int, decimal> klPhanBoByMe;
