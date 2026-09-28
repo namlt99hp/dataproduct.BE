@@ -106,6 +106,21 @@ namespace dataproduct.api.Controllers
             });
         }
 
+        /// <summary>KCS sửa tay khối lượng 1 slab (chưa lên BBSL). Nhập bằng KL gốc = khôi phục KL nhà máy.</summary>
+        [HttpPost("sua-khoi-luong")]
+        public async Task<IActionResult> SuaKhoiLuong([FromBody] Hrc2SuaKhoiLuongRequest request)
+        {
+            try
+            {
+                var result = await _svc.SuaKhoiLuongAsync(request);
+                return Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
         // ── Đúc/Kho Workflow ─────────────────────────────────────────────────
 
         [HttpPost("xac-nhan")]

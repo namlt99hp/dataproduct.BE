@@ -18,6 +18,13 @@ public class BkHrc2Slab
     public decimal? ChieuDai { get; set; }
     public decimal? KhoiLuong { get; set; }
     public decimal? KhoiLuongTinhToan { get; set; }
+    /// <summary>KL KCS sửa tay (null = chưa sửa) — KhoiLuong giữ nguyên giá trị gốc từ nhà máy (sync BKMIS
+    /// không ghi đè cột này). Giá trị hiệu lực = KhoiLuong_Manual ?? KhoiLuong.</summary>
+    public decimal? KhoiLuong_Manual { get; set; }
+    public string? LyDoSua { get; set; }
+    public string? SoBBSV { get; set; }
+    public int? NguoiSuaKL { get; set; }
+    public DateTime? ThoiDiemSuaKL { get; set; }
     public string? ChatLuongTPHH { get; set; }
     public string? ThongTinPhoi { get; set; }
     public string? TpKhongDatGangLong { get; set; }

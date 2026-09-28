@@ -84,6 +84,9 @@ namespace dataproduct.api.Services
         public async Task<int> ThuHoiAsync(Hrc2ChuyenBbslRequest req)
             => await _repo.ThuHoiAsync(req.IdSlabs, req.NguoiThucHien);
 
+        public Task<Hrc2SuaKhoiLuongResult> SuaKhoiLuongAsync(Hrc2SuaKhoiLuongRequest req)
+            => _repo.SuaKhoiLuongAsync(req);
+
         // Sync status từ BK_SyncHRC2SlabControl
         public async Task<object?> GetSyncStatusAsync()
         {
@@ -178,7 +181,8 @@ namespace dataproduct.api.Services
 
                 // Phôi nguội/nóng xác định theo tiền tố OrderId ("203" = nguội, khác = nóng) — quy ước riêng
                 // cho 2 cột này, khác GetPivotKeys() vốn dựa trên LoaiPhoi cho báo cáo tổng hợp.
-                var kl = slab.KhoiLuong.HasValue ? (double)slab.KhoiLuong.Value : 0;
+                var klHieuLuc = slab.KhoiLuong_Manual ?? slab.KhoiLuong;
+                var kl = klHieuLuc.HasValue ? (double)klHieuLuc.Value : 0;
                 var laPhoiNguoi = (slab.OrderId ?? "").StartsWith("203");
 
                 if (rowIndex > startRow)
@@ -720,7 +724,7 @@ namespace dataproduct.api.Services
                 if (!string.IsNullOrEmpty(slab.ShiftName))
                     row._shiftNames.Add(slab.ShiftName);
 
-                var kl = slab.KhoiLuong ?? 0;
+                var kl = slab.KhoiLuong_Manual ?? slab.KhoiLuong ?? 0;
                 var (soKey, _) = GetPivotKeys(slab.LoaiPhoi, slab.PhanLoai);
 
                 switch (soKey)

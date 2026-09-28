@@ -18,13 +18,15 @@ namespace dataproduct.api.Repositories
             _masterContext = masterContext;
         }
 
-        // Batch resolve HoVaTen cho danh sách NguoiXử lý (NguoiChuyenKCS/NguoiXacNhanDuc/NguoiXacNhanKho/NguoiChotPKH)
-        // để tránh N+1 query khi map từng dòng slab.
-        private async Task<Dictionary<int, string?>> GetUserNamesAsync(IEnumerable<BkHrc2SlabTrangThai?> trangThais)
+        // Batch resolve HoVaTen cho danh sách NguoiXử lý (NguoiChuyenKCS/NguoiXacNhanDuc/NguoiXacNhanKho/NguoiChotPKH
+        // + NguoiSuaKL của slab) để tránh N+1 query khi map từng dòng slab.
+        private async Task<Dictionary<int, string?>> GetUserNamesAsync(
+            IEnumerable<BkHrc2SlabTrangThai?> trangThais, IEnumerable<BkHrc2Slab> slabs)
         {
             var userIds = trangThais
                 .Where(t => t != null)
                 .SelectMany(t => new[] { t!.NguoiChuyenKCS, t.NguoiXacNhanDuc, t.NguoiXacNhanKho, t.NguoiChotPKH })
+                .Concat(slabs.Select(s => s.NguoiSuaKL))
                 .Where(id => id.HasValue)
                 .Select(id => id!.Value)
                 .Distinct()
@@ -62,6 +64,10 @@ namespace dataproduct.api.Repositories
                 query = query.Where(s => s.IsDiffMacThep == req.IsDiffMacThep.Value);
             if (req.IsSaiLotName.HasValue)
                 query = query.Where(s => s.IsSaiLotName == req.IsSaiLotName.Value);
+            if (req.IsSuaKL.HasValue)
+                query = req.IsSuaKL.Value
+                    ? query.Where(s => s.KhoiLuong_Manual != null)
+                    : query.Where(s => s.KhoiLuong_Manual == null);
 
             // Date filter via NgaySXTheoCa (ngày sản xuất suy từ ShiftName, không phải NgaySanXuat)
             if (DateOnly.TryParse(req.TuNgay, out var tuNgay))
@@ -140,7 +146,7 @@ namespace dataproduct.api.Repositories
                     ChieuDai      = g.Key.ChieuDai,
                     PhanLoai      = g.Key.PhanLoai,
                     SoLuong       = g.Count(),
-                    TongKhoiLuong = g.Sum(s => s.KhoiLuong),
+                    TongKhoiLuong = g.Sum(s => s.KhoiLuong_Manual ?? s.KhoiLuong),
                 })
                 .OrderBy(x => x.MeThep)
                 .ThenBy(x => x.MacThep)
@@ -212,7 +218,7 @@ namespace dataproduct.api.Repositories
                     ChieuDai      = g.Key.ChieuDai,
                     PhanLoai      = g.Key.PhanLoai,
                     SoLuong       = g.Count(),
-                    TongKhoiLuong = g.Sum(s => s.KhoiLuong),
+                    TongKhoiLuong = g.Sum(s => s.KhoiLuong_Manual ?? s.KhoiLuong),
                 })
                 .OrderBy(x => x.MeThep)
                 .ThenBy(x => x.MacThep)
@@ -278,7 +284,7 @@ namespace dataproduct.api.Repositories
                 .ToListAsync();
 
             var ttMap = ttList.ToDictionary(t => t.IdSlab);
-            var userNames = await GetUserNamesAsync(ttList);
+            var userNames = await GetUserNamesAsync(ttList, slabs);
 
             // "Đã check" chỉ tính riêng cho user hiện tại — không ảnh hưởng user khác.
             HashSet<int> checkedSlabIds = currentUserId.HasValue
@@ -537,8 +543,11 @@ namespace dataproduct.api.Repositories
 
         public async Task<int> ThuHoiAsync(List<int> idSlabs, int nguoiThucHien)
         {
+            // Đúc/Kho đã xác nhận thì phải hủy xác nhận trước mới được thu hồi (FE canThuHoiRow đã chặn, BE chặn
+            // thêm để không sinh dòng KCS=0 nhưng Đúc/Kho=1 — dòng đó sẽ lọt qua điều kiện cho phép sửa KL).
             var records = await _context.BkHrc2SlabTrangThais
-                .Where(t => idSlabs.Contains(t.IdSlab) && t.TrangThaiPKH == 0)
+                .Where(t => idSlabs.Contains(t.IdSlab) && t.TrangThaiPKH == 0
+                            && t.TrangThaiDuc == 0 && t.TrangThaiKho == 0)
                 .ToListAsync();
 
             foreach (var t in records)
@@ -564,6 +573,78 @@ namespace dataproduct.api.Repositories
 
             await _context.SaveChangesAsync();
             return records.Count;
+        }
+
+        // ── KCS: Sửa tay khối lượng ──────────────────────────────────────────
+
+        public async Task<Hrc2SuaKhoiLuongResult> SuaKhoiLuongAsync(Hrc2SuaKhoiLuongRequest req)
+        {
+            if (req.KhoiLuong == null)
+                throw new InvalidOperationException("Khối lượng không được để trống.");
+            if (req.KhoiLuong < 0)
+                throw new InvalidOperationException("Khối lượng không được âm.");
+
+            // Làm tròn về đúng scale cột decimal(18,3) TRƯỚC khi so sánh với KL gốc — tránh lệch kiểu nhập 12.3456
+            // khác 12.346 lúc so nhưng lưu xuống lại thành 12.346 (bằng KL gốc mà vẫn bị tính là sửa tay).
+            var klMoi = Math.Round(req.KhoiLuong.Value, 3, MidpointRounding.AwayFromZero);
+            var lyDo  = string.IsNullOrWhiteSpace(req.LyDoSua) ? null : req.LyDoSua.Trim();
+            var soBBSV = string.IsNullOrWhiteSpace(req.SoBBSV) ? null : req.SoBBSV.Trim();
+
+            // Serializable: khóa cả dòng TrangThai (hoặc khoảng key IdSlab nếu chưa có dòng) cho tới khi commit —
+            // chặn race với ChuyenBbslAsync chạy song song (KCS khác chuyển slab lên BBSL đúng lúc đang sửa).
+            await using var tx = await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+
+            var slab = await _context.BkHrc2Slabs.FirstOrDefaultAsync(s => s.Id == req.IdSlab)
+                ?? throw new InvalidOperationException("Slab không tồn tại.");
+            var tt = await _context.BkHrc2SlabTrangThais.FirstOrDefaultAsync(t => t.IdSlab == req.IdSlab);
+
+            // Chỉ sửa được khi slab chưa lên BBSL và mọi bên đã gỡ xác nhận — muốn sửa lại slab đã chuyển thì
+            // Đúc/Kho phải hủy xác nhận, KCS thu hồi xong (tất cả trạng thái về 0) mới cho sửa tiếp.
+            var biKhoa = slab.IsChot
+                || (tt != null && (tt.TrangThaiKCS != 0 || tt.TrangThaiDuc != 0 || tt.TrangThaiKho != 0
+                                   || tt.TrangThaiPKH != 0 || tt.IdPhieuBBSL != null));
+            if (biKhoa)
+                throw new InvalidOperationException(
+                    $"Slab {slab.IdSlab} đã chuyển lên BBSL hoặc còn bên xác nhận — phải hủy xác nhận và thu hồi trước khi sửa khối lượng.");
+
+            var isReset = slab.KhoiLuong.HasValue && klMoi == slab.KhoiLuong.Value;
+            var now = DateTime.Now;
+
+            if (isReset)
+            {
+                // Nhập về đúng KL gốc = coi như chưa sửa. Lý do/Số BBSV không bắt buộc nhưng nếu người dùng vẫn nhập
+                // thì giữ lại để truy vết (kèm người/thời điểm); không nhập gì thì xóa sạch vết sửa.
+                var coThongTin = lyDo != null || soBBSV != null;
+                slab.KhoiLuong_Manual = null;
+                slab.LyDoSua          = lyDo;
+                slab.SoBBSV           = soBBSV;
+                slab.NguoiSuaKL       = coThongTin ? req.NguoiThucHien : null;
+                slab.ThoiDiemSuaKL    = coThongTin ? now : null;
+            }
+            else
+            {
+                if (lyDo == null)
+                    throw new InvalidOperationException("Vui lòng nhập Lý do sửa.");
+                if (soBBSV == null)
+                    throw new InvalidOperationException("Vui lòng nhập Số BBSV.");
+
+                slab.KhoiLuong_Manual = klMoi;
+                slab.LyDoSua          = lyDo;
+                slab.SoBBSV           = soBBSV;
+                slab.NguoiSuaKL       = req.NguoiThucHien;
+                slab.ThoiDiemSuaKL    = now;
+            }
+
+            await _context.SaveChangesAsync();
+            await tx.CommitAsync();
+
+            return new Hrc2SuaKhoiLuongResult
+            {
+                IsReset = isReset,
+                Message = isReset
+                    ? $"Đã khôi phục khối lượng nhà máy cho slab {slab.IdSlab}."
+                    : $"Đã cập nhật khối lượng slab {slab.IdSlab}.",
+            };
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────
@@ -608,7 +689,7 @@ namespace dataproduct.api.Repositories
                     .ToDictionaryAsync(p => p.Idphieu)
                 : [];
 
-            var userNames = await GetUserNamesAsync(ttMap.Values);
+            var userNames = await GetUserNamesAsync(ttMap.Values, slabs);
 
             return slabs.Select(s =>
             {
@@ -643,7 +724,13 @@ namespace dataproduct.api.Repositories
                 ChieuDay           = s.ChieuDay,
                 ChieuRong          = s.ChieuRong,
                 ChieuDai           = s.ChieuDai,
-                KhoiLuong          = s.KhoiLuong,
+                KhoiLuong          = s.KhoiLuong_Manual ?? s.KhoiLuong,
+                KhoiLuongGoc       = s.KhoiLuong,
+                KhoiLuongManual    = s.KhoiLuong_Manual,
+                LyDoSua            = s.LyDoSua,
+                SoBBSV             = s.SoBBSV,
+                NguoiSuaKL         = ResolveName(s.NguoiSuaKL),
+                ThoiDiemSuaKL      = s.ThoiDiemSuaKL,
                 KhoiLuongTinhToan  = s.KhoiLuongTinhToan,
                 ChatLuongTPHH      = s.ChatLuongTPHH,
                 ThongTinPhoi       = s.ThongTinPhoi,

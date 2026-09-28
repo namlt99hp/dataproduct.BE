@@ -557,6 +557,7 @@ namespace dataproduct.api.Repositories
         Task HuyChotPhieuAsync(Guid idPhieu, int nguoiThucHien);
         Task<int> ChuyenBbslAsync(List<int> idSlabs, Guid idPhieu, int nguoiThucHien, DateTime? thoiDiemThaoTac = null);
         Task<int> ThuHoiAsync(List<int> idSlabs, int nguoiThucHien);
+        Task<Hrc2SuaKhoiLuongResult> SuaKhoiLuongAsync(Hrc2SuaKhoiLuongRequest req);
         Task<SyncStatusItem> SyncAsync(DateOnly? ngayBatDau, DateOnly? ngayKetThuc);
         Task CheckAsync(List<int> idSlabs, int idUser);
         Task UnCheckAsync(List<int> idSlabs, int idUser);

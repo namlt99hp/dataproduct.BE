@@ -977,7 +977,14 @@ public partial class ProductFormContext : DbContext
             entity.Property(e => e.ChieuDay).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.ChieuRong).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.ChieuDai).HasColumnType("decimal(18, 2)");
-            entity.Property(e => e.KhoiLuong).HasColumnType("decimal(18, 2)");
+            // KhoiLuong + KhoiLuong_Manual cùng decimal(18,3) để so sánh "sửa về bằng KL gốc = reset" chính xác 3 số lẻ
+            // (xem .claude/migrations/hrc2_slab_khoiluong_manual.sql).
+            entity.Property(e => e.KhoiLuong).HasColumnType("decimal(18, 3)");
+            entity.Property(e => e.KhoiLuong_Manual).HasColumnName("KhoiLuong_Manual").HasColumnType("decimal(18, 3)");
+            entity.Property(e => e.LyDoSua).HasMaxLength(500);
+            entity.Property(e => e.SoBBSV).HasColumnName("SoBBSV").HasMaxLength(50);
+            entity.Property(e => e.NguoiSuaKL).HasColumnName("NguoiSuaKL");
+            entity.Property(e => e.ThoiDiemSuaKL).HasColumnName("ThoiDiemSuaKL").HasColumnType("datetime");
             entity.Property(e => e.KhoiLuongTinhToan).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.NgayTao).HasColumnType("datetime");
             entity.Property(e => e.ThoiDiemThaoTac).HasColumnType("datetime");

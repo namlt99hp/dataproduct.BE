@@ -16,6 +16,8 @@ namespace dataproduct.api.DTOs
         public bool? IsTrungIDSlab { get; set; }
         public bool? IsDiffMacThep { get; set; }
         public bool? IsSaiLotName { get; set; }
+        // true = chỉ lấy slab đã sửa tay KL (KhoiLuong_Manual != null)
+        public bool? IsSuaKL { get; set; }
         public int? TrangThaiKCS { get; set; }
         public int? TrangThaiDuc { get; set; }
         public int? TrangThaiKho { get; set; }
@@ -39,7 +41,16 @@ namespace dataproduct.api.DTOs
         public decimal? ChieuDay { get; set; }
         public decimal? ChieuRong { get; set; }
         public decimal? ChieuDai { get; set; }
+        // KL hiệu lực = KhoiLuong_Manual ?? KhoiLuong gốc — mọi chỗ cộng tổng/hiển thị dùng field này
         public decimal? KhoiLuong { get; set; }
+        // KL gốc từ nhà máy (BKMIS), để so sánh với KL sửa tay
+        public decimal? KhoiLuongGoc { get; set; }
+        // KL KCS sửa tay (null = chưa sửa)
+        public decimal? KhoiLuongManual { get; set; }
+        public string? LyDoSua { get; set; }
+        public string? SoBBSV { get; set; }
+        public string? NguoiSuaKL { get; set; }
+        public DateTime? ThoiDiemSuaKL { get; set; }
         public decimal? KhoiLuongTinhToan { get; set; }
         public string? ChatLuongTPHH { get; set; }
         public string? ThongTinPhoi { get; set; }
@@ -136,6 +147,22 @@ namespace dataproduct.api.DTOs
     {
         public List<int> IdSlabs { get; set; } = [];
         public int NguoiThucHien { get; set; }
+    }
+
+    public class Hrc2SuaKhoiLuongRequest
+    {
+        public int IdSlab { get; set; }
+        public decimal? KhoiLuong { get; set; }
+        public string? LyDoSua { get; set; }
+        public string? SoBBSV { get; set; }
+        public int NguoiThucHien { get; set; }
+    }
+
+    public class Hrc2SuaKhoiLuongResult
+    {
+        // true = KL nhập bằng KL gốc → đã khôi phục về KL nhà máy (KhoiLuong_Manual = null)
+        public bool IsReset { get; set; }
+        public string Message { get; set; } = "";
     }
 
 }
