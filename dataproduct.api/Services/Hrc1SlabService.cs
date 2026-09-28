@@ -126,8 +126,22 @@ namespace dataproduct.api.Services
         public Task<int> ChuyenPhoiAsync(Hrc1ChuyenPhoiRequest req)
             => _repo.ChuyenPhoiAsync(req.IdSlabs, req.IdPhieuNguon, req.Huong, req.NguoiChuyen);
 
-        public Task XacNhanAsync(XacNhanRequest req)
-            => _repo.XacNhanAsync(req.IdSlabs, req.LoaiXacNhan, req.NguoiThucHien);
+        public async Task XacNhanAsync(XacNhanRequest req)
+        {
+            // Luồng C4 (GĐ/PGĐ NM) đã bỏ cho phiếu mới — chỉ phiếu cũ đang "dính" C4 (có ≥1 slab đã được
+            // C4 xác nhận) mới còn cho XN C4, và chỉ trên slab thuộc đúng phiếu đó.
+            if (req.LoaiXacNhan == "C4")
+            {
+                if (req.IdPhieu == null)
+                    throw new InvalidOperationException("Thiếu phiếu khi xác nhận C4.");
+                var (slabIds, dinhC4) = await _repo.GetPhieuC4InfoAsync(req.IdPhieu.Value);
+                if (!dinhC4)
+                    throw new InvalidOperationException("Phiếu này không còn luồng xác nhận GĐ/PGĐ NM (C4).");
+                if (req.IdSlabs.Any(id => !slabIds.Contains(id)))
+                    throw new InvalidOperationException("Có slab không thuộc phiếu đang xác nhận.");
+            }
+            await _repo.XacNhanAsync(req.IdSlabs, req.LoaiXacNhan, req.NguoiThucHien);
+        }
 
         public Task HuyXacNhanAsync(XacNhanRequest req)
             => _repo.HuyXacNhanAsync(req.IdSlabs, req.LoaiXacNhan, req.NguoiThucHien);
@@ -364,12 +378,24 @@ namespace dataproduct.api.Services
 
             var (ducSigImg, ducSigTen) = await BuildSigPartsAsync(ducUserId, userMap);
             var (canSigImg, canSigTen) = await BuildSigPartsAsync(canUserId, userMap);
-            var (c4SigImg, c4SigTen) = await BuildSigPartsAsync(c4UserId, userMap);
+            // Luồng C4 đã bỏ cho phiếu mới — chỉ phiếu cũ có người C4 xác nhận mới in ô ký + dòng thành phần C4
+            var c4SigCellHtml = "";
+            if (c4UserId != null)
+            {
+                var (c4SigImg, c4SigTen) = await BuildSigPartsAsync(c4UserId, userMap);
+                c4SigCellHtml =
+                    "<div class=\"sig-cell\">" +
+                    "<div class=\"sig-title\">PGĐ/GĐ NM</div>" +
+                    "<div class=\"sig-note\">(Ký, ghi rõ họ tên)</div>" +
+                    $"<div class=\"sig-space\">{c4SigImg}</div>" +
+                    $"<div class=\"sig-name\">{c4SigTen}</div>" +
+                    "</div>";
+            }
 
             var thanhPhanHtml = string.Concat(
                 BuildThanhPhanLine(1, ducUserId, userMap),
                 BuildThanhPhanLine(2, canUserId, userMap),
-                BuildThanhPhanLine(3, c4UserId, userMap));
+                c4UserId != null ? BuildThanhPhanLine(3, c4UserId, userMap) : "");
 
             var templatePath = Path.Combine(_env.WebRootPath, "template_html", "HRC1_BBXNSL_PhoiTam.html");
             if (!File.Exists(templatePath))
@@ -390,8 +416,7 @@ namespace dataproduct.api.Services
                 .Replace("{{DucKyTenHtml}}", ducSigTen)
                 .Replace("{{CanKyImgHtml}}", canSigImg)
                 .Replace("{{CanKyTenHtml}}", canSigTen)
-                .Replace("{{C4KyImgHtml}}", c4SigImg)
-                .Replace("{{C4KyTenHtml}}", c4SigTen);
+                .Replace("{{C4SigCellHtml}}", c4SigCellHtml);
 
             var doc = new HtmlToPdfDocument
             {
@@ -476,13 +501,16 @@ namespace dataproduct.api.Services
                     : $"{label}: Ông/Bà: {u.HoVaTen}   Chức vụ: {chucVu}";
             }
 
-            return string.Join("\n", new[]
+            var lines = new List<string>
             {
                 "Chúng tôi gồm:",
                 Line("1. Đúc", ducUserId),
                 Line("2. Cán", canUserId),
-                Line("3. GĐ/PGĐ NM", c4UserId),
-            });
+            };
+            // Luồng C4 đã bỏ cho phiếu mới — chỉ in dòng GĐ/PGĐ NM khi phiếu cũ có người C4 xác nhận
+            if (c4UserId != null)
+                lines.Add(Line("3. GĐ/PGĐ NM", c4UserId));
+            return string.Join("\n", lines);
         }
 
         private static void SetThanhPhanCell(IXLWorksheet ws, int row, string text)

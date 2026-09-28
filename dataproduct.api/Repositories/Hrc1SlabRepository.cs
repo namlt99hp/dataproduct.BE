@@ -678,12 +678,16 @@ namespace dataproduct.api.Repositories
                 select t
             ).ToListAsync();
 
+            // Luồng C4 chỉ còn bắt buộc với phiếu cũ đang "dính" C4 (có ≥1 slab đã được C4 xác nhận) —
+            // phiếu mới chỉ cần Đúc + Cán. Xem IsDinhC4.
+            var yeuCauC4 = IsDinhC4(naturalTTMap.Values.Concat(transferredRecords));
             var chuaXacNhan = naturalSlabs.Count(s =>
-                    !naturalTTMap.TryGetValue(s.Id, out var tt) || tt.TrangThaiDuc != 1 || tt.TrangThaiCan != 1 || !tt.TrangThaiC4)
-                + transferredRecords.Count(t => t.TrangThaiDuc != 1 || t.TrangThaiCan != 1 || !t.TrangThaiC4);
+                    !naturalTTMap.TryGetValue(s.Id, out var tt) || tt.TrangThaiDuc != 1 || tt.TrangThaiCan != 1 || (yeuCauC4 && !tt.TrangThaiC4))
+                + transferredRecords.Count(t => t.TrangThaiDuc != 1 || t.TrangThaiCan != 1 || (yeuCauC4 && !t.TrangThaiC4));
             if (chuaXacNhan > 0)
-                throw new InvalidOperationException(
-                    $"Còn {chuaXacNhan} slab chưa được Đúc, Cán và C4 xác nhận đầy đủ, không thể chốt phiếu.");
+                throw new InvalidOperationException(yeuCauC4
+                    ? $"Còn {chuaXacNhan} slab chưa được Đúc, Cán và GĐ/PGĐ NM xác nhận đầy đủ, không thể chốt phiếu."
+                    : $"Còn {chuaXacNhan} slab chưa được Đúc và Cán xác nhận đầy đủ, không thể chốt phiếu.");
 
             foreach (var slab in naturalSlabs)
             {
@@ -1060,6 +1064,27 @@ namespace dataproduct.api.Repositories
             }
 
             await _context.SaveChangesAsync();
+        }
+
+        // ── Helper: luồng C4 (GĐ/PGĐ NM) ─────────────────────────────────────
+
+        /// <summary>
+        /// Luồng C4 đã bỏ cho phiếu mới. Phiếu cũ đang "dính" C4 = có ≥1 slab thuộc phiếu đã được C4
+        /// xác nhận → vẫn chạy đủ luồng C4 (XN/Hủy C4, bắt buộc C4 khi chốt). Nếu C4 hủy hết xác nhận
+        /// trên phiếu thì phiếu trở về luồng mới (chỉ Đúc + Cán). Dùng chung với Hrc1BbgnPhoiTamEnricher.
+        /// </summary>
+        internal static bool IsDinhC4(IEnumerable<Hrc1SlabTrangThai?> trangThais)
+            => trangThais.Any(t => t?.TrangThaiC4 == true);
+
+        public async Task<(HashSet<int> SlabIds, bool DinhC4)> GetPhieuC4InfoAsync(Guid idPhieu)
+        {
+            var phieu = await _context.BmPhieus.AsNoTracking().FirstOrDefaultAsync(p => p.Idphieu == idPhieu)
+                ?? throw new InvalidOperationException("Phiếu không tồn tại");
+
+            var slabIds = (await LoadPhieuSlabsAsync(phieu)).Select(s => s.Id).ToHashSet();
+            var dinhC4 = slabIds.Count > 0 && await _context.Hrc1SlabTrangThais
+                .AnyAsync(t => slabIds.Contains(t.IdSlab) && t.TrangThaiC4);
+            return (slabIds, dinhC4);
         }
 
         // ── Helper: load tất cả slab thuộc phiếu ─────────────────────────────

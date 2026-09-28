@@ -137,12 +137,8 @@
       <div class="sig-space">{{CanKyImgHtml}}</div>
       <div class="sig-name">{{CanKyTenHtml}}</div>
     </div>
-    <div class="sig-cell">
-      <div class="sig-title">PGĐ/GĐ NM</div>
-      <div class="sig-note">(Ký, ghi rõ họ tên)</div>
-      <div class="sig-space">{{C4KyImgHtml}}</div>
-      <div class="sig-name">{{C4KyTenHtml}}</div>
-    </div>
+    <!-- Ô ký PGĐ/GĐ NM: chỉ render với phiếu cũ có C4 xác nhận (luồng C4 đã bỏ cho phiếu mới) — xem Hrc1SlabService.ExportTongHopPdfAsync -->
+    {{C4SigCellHtml}}
   </div>
 
 </div>

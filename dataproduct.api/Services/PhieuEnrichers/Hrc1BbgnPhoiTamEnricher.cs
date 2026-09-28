@@ -7,8 +7,8 @@ namespace dataproduct.api.Services.PhieuEnrichers;
 /// <summary>
 /// Ghi đè TinhTrang trong danh sách phiếu (chỉ ở response, không đụng cột DB thật) thành
 /// trạng thái tổng hợp riêng cho BBGN Phôi tấm HRC1 — không dùng chung enum TrangThaiPhieuConst:
-///   11 = Chưa hoàn thành (còn slab chưa được Đúc + Cán + C4 xác nhận đầy đủ)
-///   12 = Đã hoàn thành   (mọi slab đã được Đúc + Cán + C4 xác nhận, nhưng PKH chưa chốt)
+///   11 = Chưa hoàn thành (còn slab chưa được Đúc + Cán xác nhận đầy đủ — cộng thêm C4 nếu phiếu cũ "dính" C4)
+///   12 = Đã hoàn thành   (mọi slab đã được Đúc + Cán (+ C4 nếu dính) xác nhận, nhưng PKH chưa chốt)
 ///   5  = Đã chốt         (giữ nguyên TinhTrang thật của BmPhieu, KHÔNG override — 5 đã khớp
 ///                         nghĩa "Chốt" trong TrangThaiPhieuConst dùng chung)
 ///
@@ -74,9 +74,10 @@ public class Hrc1BbgnPhoiTamEnricher : IPhieuSearchEnricher, IPhieuTinhTrangFilt
             return;
         }
 
+        // C4 chỉ bắt buộc với phiếu cũ đang "dính" C4 (SoLuongXNC4 > 0) — xem Hrc1SlabRepository.IsDinhC4
         var hoanThanh = item.SoLuongXNDuc == item.SoLuongSlab
             && item.SoLuongXNCan == item.SoLuongSlab
-            && item.SoLuongXNC4 == item.SoLuongSlab;
+            && (item.SoLuongXNC4 == 0 || item.SoLuongXNC4 == item.SoLuongSlab);
 
         item.TinhTrang = hoanThanh ? 12 : 11;
     }
@@ -151,9 +152,11 @@ public class Hrc1BbgnPhoiTamEnricher : IPhieuSearchEnricher, IPhieuTinhTrangFilt
             }
             else
             {
+                var yeuCauC4 = Repositories.Hrc1SlabRepository.IsDinhC4(
+                    naturalIds.Select(id => naturalTTMap.GetValueOrDefault(id)).Concat(transferredRecords));
                 var chuaXacNhan = naturalIds.Count(id =>
-                        !naturalTTMap.TryGetValue(id, out var tt) || tt.TrangThaiDuc != 1 || tt.TrangThaiCan != 1 || !tt.TrangThaiC4)
-                    + transferredRecords.Count(t => t.TrangThaiDuc != 1 || t.TrangThaiCan != 1 || !t.TrangThaiC4);
+                        !naturalTTMap.TryGetValue(id, out var tt) || tt.TrangThaiDuc != 1 || tt.TrangThaiCan != 1 || (yeuCauC4 && !tt.TrangThaiC4))
+                    + transferredRecords.Count(t => t.TrangThaiDuc != 1 || t.TrangThaiCan != 1 || (yeuCauC4 && !t.TrangThaiC4));
                 hoanThanh = chuaXacNhan == 0;
             }
 

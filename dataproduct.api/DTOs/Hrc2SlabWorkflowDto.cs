@@ -21,6 +21,9 @@ namespace dataproduct.api.DTOs
         /// <summary>HRC2: "Duc" | "Kho" | "PKH". HRC1: "Duc" | "Can" | "C4" (dùng chung DTO, mỗi controller tự validate).</summary>
         public string LoaiXacNhan { get; set; } = "";
         public int NguoiThucHien { get; set; }
+        /// <summary>HRC1 — bắt buộc khi LoaiXacNhan = "C4": chỉ phiếu cũ đã "dính" luồng C4 (có ≥1 slab
+        /// đã được C4 xác nhận) mới còn cho XN C4, phiếu mới bỏ hẳn luồng C4.</summary>
+        public Guid? IdPhieu { get; set; }
     }
 
     public class ChotPhieuRequest

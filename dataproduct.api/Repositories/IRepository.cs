@@ -529,6 +529,7 @@ namespace dataproduct.api.Repositories
         Task<IEnumerable<Hrc1SlabTongHopItem>> GetRuotPhieuAsync(Guid idPhieu);
         Task<IEnumerable<Hrc1SlabItem>> GetSlabsByPhieuAsync(Guid idPhieu);
         Task<int> ChuyenPhoiAsync(List<int> idSlabs, Guid idPhieuNguon, string huong, int nguoiChuyen);
+        Task<(HashSet<int> SlabIds, bool DinhC4)> GetPhieuC4InfoAsync(Guid idPhieu);
         Task XacNhanAsync(List<int> idSlabs, string loaiXacNhan, int nguoiThucHien);
         Task HuyXacNhanAsync(List<int> idSlabs, string loaiXacNhan, int nguoiThucHien);
         Task ChotPhieuAsync(Guid idPhieu, int nguoiThucHien);
