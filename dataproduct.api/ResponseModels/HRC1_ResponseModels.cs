@@ -130,6 +130,8 @@ namespace dataproduct.api.ResponseModels
     {
         public int Id { get; set; }
         public string TenMayDuc { get; set; } = null!;
+        // Máy đã khóa vẫn trả về để hiển thị tên cho mẻ/phiếu cũ; FE disable, không cho chọn mới
+        public bool IsLock { get; set; }
     }
 
     // Mẻ BBGN thép lỏng lọc theo khoảng ThoiGian thực tế (giao ca)
@@ -160,6 +162,7 @@ namespace dataproduct.api.ResponseModels
         public string? MaBm { get; set; }         // HRC1_LoThoi | HRC1_TinhLuyen | HRC1_BBGN_ThepLong
         public string? CongDoan { get; set; }     // lo_thoi | tinh_luyen | duc
         public int? Scope { get; set; }           // lò/TL số (1–5) hoặc MayDuc.Id
+        public string? TenScope { get; set; }     // tên máy đúc chốt lúc tạo phiếu (BmPhieu.TenScope)
         public DateOnly? NgaySX { get; set; }
         public int? Ca { get; set; }
         public string? Kip { get; set; }

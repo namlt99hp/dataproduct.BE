@@ -598,7 +598,6 @@ namespace dataproduct.api.Repositories
         Task<MayDuc?> GetByIdAsync(int id);
         Task AddAsync(MayDuc entity);
         Task UpdateAsync(MayDuc entity);
-        Task DeleteAsync(int id);
         Task<bool> ExistsByTenAsync(string tenMayDuc, byte nhaMay, int? excludeId = null);
     }
 

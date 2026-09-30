@@ -201,6 +201,7 @@ namespace dataproduct.api.Services
                 MaBm = phieu.MaBm,
                 CongDoan = congDoan,
                 Scope = phieu.Scope,
+                TenScope = phieu.TenScope,
                 NgaySX = phieu.NgaySX,
                 Ca = phieu.Ca,
                 Kip = phieu.Kip,
@@ -283,6 +284,7 @@ namespace dataproduct.api.Services
                 throw new InvalidOperationException("Mẻ đã có xác nhận/không xác nhận PCN. Cần Reset xác nhận PCN trước khi đổi Thử nghiệm.");
 
             var oldDich = me.DichChuyen;
+            var oldIdMayDucDich = me.IdMayDucDich;
             var old = Snapshot(me);
             var loThoiPc = await _repo.GetLoThoiMePhanCongByMeIdAsync(meId);
 
@@ -339,6 +341,7 @@ namespace dataproduct.api.Services
                 if (loThoiPc != null)
                     loThoiPc.ChuyenVeMeId = req.ChuyenVeMeId;
             }
+            await EnsureMayDucChuaKhoaAsync(oldIdMayDucDich, me.IdMayDucDich);
             me.IsThuNghiem = P("isThuNghiem") ? req.IsThuNghiem : me.IsThuNghiem;
             me.IsTrungMeThoi = P("isTrungMeThoi") ? req.IsTrungMeThoi : me.IsTrungMeThoi;
             me.GhiChuLo = P("ghiChuLo") ? req.GhiChuLo : me.GhiChuLo;
@@ -730,7 +733,9 @@ namespace dataproduct.api.Services
             me.KlLan2 = P("klLan2") ? req.KlLan2 : me.KlLan2;
             me.KlLan3 = P("klLan3") ? req.KlLan3 : me.KlLan3;
             me.KlThepLong = P("klThepLong") ? req.KlThepLong : me.KlThepLong;
+            var oldIdMayDucDich = me.IdMayDucDich;
             me.IdMayDucDich = P("idMayDucDich") ? req.IdMayDucDich : me.IdMayDucDich;
+            await EnsureMayDucChuaKhoaAsync(oldIdMayDucDich, me.IdMayDucDich);
             me.PhanLoai = P("phanLoai") ? req.PhanLoai : me.PhanLoai;
             me.MacThep = P("macThep") ? req.MacThep : me.MacThep;
             me.MacThepBKMIS = P("macThepBKMIS") ? req.MacThepBKMIS : me.MacThepBKMIS;
@@ -1636,13 +1641,22 @@ namespace dataproduct.api.Services
                     var scopeSet = new HashSet<int>(activeScopes);
                     return mayDucs
                         .Where(md => scopeSet.Contains(md.Id))
-                        .Select(md => new HRC1_MayDucOptionVm { Id = md.Id, TenMayDuc = md.TenMayDuc ?? string.Empty })
+                        .Select(md => new HRC1_MayDucOptionVm { Id = md.Id, TenMayDuc = md.TenMayDuc ?? string.Empty, IsLock = md.IsLock == true })
                         .ToList();
                 }
             }
             return mayDucs
-                .Select(md => new HRC1_MayDucOptionVm { Id = md.Id, TenMayDuc = md.TenMayDuc ?? string.Empty })
+                .Select(md => new HRC1_MayDucOptionVm { Id = md.Id, TenMayDuc = md.TenMayDuc ?? string.Empty, IsLock = md.IsLock == true })
                 .ToList();
+        }
+
+        // Máy đúc đã khóa (IsLock) vẫn giữ trên mẻ cũ, nhưng không được chọn mới làm máy đúc đích.
+        private async Task EnsureMayDucChuaKhoaAsync(int? oldId, int? newId)
+        {
+            if (!newId.HasValue || newId == oldId) return;
+            var md = (await _repo.GetMayDucsHRC1Async()).FirstOrDefault(m => m.Id == newId.Value);
+            if (md?.IsLock == true)
+                throw new InvalidOperationException($"Máy đúc {md.TenMayDuc} đã ngừng sử dụng, không thể chọn.");
         }
 
         // -------------------------------------------------------

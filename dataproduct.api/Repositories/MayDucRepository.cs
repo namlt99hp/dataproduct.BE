@@ -41,14 +41,6 @@ namespace dataproduct.api.Repositories
             await _context.SaveChangesAsync();
         }
 
-        public async Task DeleteAsync(int id)
-        {
-            var item = await _context.MayDucs.FirstOrDefaultAsync(x => x.Id == id);
-            if (item == null) return;
-            _context.MayDucs.Remove(item);
-            await _context.SaveChangesAsync();
-        }
-
         public Task<bool> ExistsByTenAsync(string tenMayDuc, byte nhaMay, int? excludeId = null)
         {
             var query = _context.MayDucs.Where(x => x.TenMayDuc == tenMayDuc && x.NhaMay == nhaMay);

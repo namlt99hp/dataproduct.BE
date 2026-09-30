@@ -80,10 +80,11 @@ namespace dataproduct.api.Controllers
             }
         }
 
-        [HttpDelete("{id}")]
-        public async Task<IActionResult> Delete(int id)
+        // Không có xóa cứng — chỉ khóa (xem MayDucService.LockAsync)
+        [HttpPut("{id}/lock")]
+        public async Task<IActionResult> Lock(int id)
         {
-            var ok = await _service.DeleteAsync(id);
+            var ok = await _service.LockAsync(id);
             return ok ? NoContent() : NotFound();
         }
     }
