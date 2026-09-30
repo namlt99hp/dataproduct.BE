@@ -239,7 +239,7 @@ namespace dataproduct.api.Services
         public async Task<ExportFileResult> ExportTongHopExcelAsync(Guid idPhieu)
         {
             var phieu = await GetPhieuAsync(idPhieu);
-            var (soPhieu, ngaySX, _, _) = ExtractPhieuInfo(phieu);
+            var (soPhieu, ngaySX, ca, kip) = ExtractPhieuInfo(phieu);
 
             var trangThais = await GetTrangThaisAsync(idPhieu);
             var pivotRows = BuildPivotRows(trangThais);
@@ -251,8 +251,22 @@ namespace dataproduct.api.Services
             using var workbook = new XLWorkbook(templatePath);
             var ws = workbook.Worksheet(1);
 
-            const int startRow = 6;
             const int lastCol = 27;
+
+            // Template: dòng 1 = logo/mã BM, dòng 2 = tiêu đề, dòng 3-5 = header bảng. Chèn sub-title
+            // + khối "Thành phần" giữa tiêu đề và header bảng — cùng vị trí .sub-title/{{ThanhPhanHtml}}
+            // trong HRC2_BBXNSL_PhoiTam.html, cùng thứ tự người (QLCL/Đúc/Kho) với ExportTongHopPdfAsync.
+            var (ducUserId, khoUserId, qlclUserId, userMap) = await GetPhieuSignerUsersAsync(idPhieu);
+            var thanhPhan = new[]
+            {
+                FindUser(qlclUserId, userMap),
+                FindUser(ducUserId, userMap),
+                FindUser(khoUserId, userMap),
+            };
+            var insertedRows = InsertInfoRows(ws, 3, $"{ca}{kip}", ngaySX, thanhPhan, lastCol);
+
+            var startRow = 6 + insertedRows;
+            ws.SheetView.FreezeRows(startRow - 1);
             var rowIndex = startRow;
             var stt = 1;
 
@@ -318,6 +332,8 @@ namespace dataproduct.api.Services
             var lastRow = pivotRows.Count > 0 ? rowIndex : rowIndex - 1;
             if (lastRow >= startRow)
                 SetThinBorders(ws, startRow, lastRow, lastCol);
+
+            AddSignatureBlock(ws, lastRow + 2, lastCol);
 
             using var ms = new MemoryStream();
             workbook.SaveAs(ms);
@@ -398,16 +414,7 @@ namespace dataproduct.api.Services
             rowsHtml.Append($"<td class=\"num\"><strong>{NKl(pivotRows.Sum(r => r.TongKhoiLuong), vi)}</strong></td>");
             rowsHtml.Append("</tr>");
 
-            var (ducUserId, khoUserId, qlclUserId) = await GetPhieuSignersAsync(idPhieu);
-            var signerIds = new[] { ducUserId, khoUserId, qlclUserId }
-                .Where(id => id != null).Select(id => id!.Value).Distinct().ToList();
-            var userMap = signerIds.Count > 0
-                ? await _masterCtx.Tbl_TaiKhoan
-                    .Include(t => t.ViTri)
-                    .Include(t => t.PhongBan)
-                    .Where(t => signerIds.Contains(t.ID_TaiKhoan))
-                    .ToDictionaryAsync(t => t.ID_TaiKhoan)
-                : new Dictionary<int, TaiKhoan>();
+            var (ducUserId, khoUserId, qlclUserId, userMap) = await GetPhieuSignerUsersAsync(idPhieu);
 
             var (ducSigImg, ducSigTen) = await BuildSigPartsAsync(ducUserId, userMap);
             var (khoSigImg, khoSigTen) = await BuildSigPartsAsync(khoUserId, userMap);
@@ -572,6 +579,125 @@ namespace dataproduct.api.Services
                 .FirstOrDefault();
 
             return (ducUserId, khoUserId, qlclUserId);
+        }
+
+        // Người ký (Duc/Kho/Qlcl) + thông tin tài khoản — dùng chung cho biên bản PDF và Excel.
+        private async Task<(int? Duc, int? Kho, int? Qlcl, Dictionary<int, TaiKhoan> UserMap)> GetPhieuSignerUsersAsync(Guid idPhieu)
+        {
+            var (ducUserId, khoUserId, qlclUserId) = await GetPhieuSignersAsync(idPhieu);
+            var signerIds = new[] { ducUserId, khoUserId, qlclUserId }
+                .Where(id => id != null).Select(id => id!.Value).Distinct().ToList();
+            var userMap = signerIds.Count > 0
+                ? await _masterCtx.Tbl_TaiKhoan
+                    .Include(t => t.ViTri)
+                    .Include(t => t.PhongBan)
+                    .Where(t => signerIds.Contains(t.ID_TaiKhoan))
+                    .ToDictionaryAsync(t => t.ID_TaiKhoan)
+                : new Dictionary<int, TaiKhoan>();
+
+            return (ducUserId, khoUserId, qlclUserId, userMap);
+        }
+
+        private static TaiKhoan? FindUser(int? userId, Dictionary<int, TaiKhoan> userMap)
+            => userId != null && userMap.TryGetValue(userId.Value, out var u) ? u : null;
+
+        private static void StyleTextRange(IXLRange range, bool bold = false, bool italic = false,
+            XLAlignmentHorizontalValues horizontal = XLAlignmentHorizontalValues.Left, double fontSize = 11)
+        {
+            if (range.ColumnCount() > 1) range.Merge();
+            range.Style.Font.FontName = "Times New Roman";
+            range.Style.Font.FontSize = fontSize;
+            range.Style.Font.Bold = bold;
+            range.Style.Font.Italic = italic;
+            range.Style.Alignment.Horizontal = horizontal;
+            range.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+        }
+
+        // Chèn từ fromRow (đẩy header bảng xuống), tương ứng .sub-title + .info-wrap trong HTML:
+        //   - sub-title "Máy đúc 1 và 2  Kíp: ..  Ngày: .." (merge A..lastCol, căn giữa)
+        //   - "Chúng tôi gồm:"
+        //   - mỗi thành viên 1 dòng, chia 4 khối cột cố định để Ông/Bà | Chức vụ | BP thẳng hàng dọc
+        //     giữa các dòng (như .info-idx/.info-name/.info-chucvu có độ rộng cố định trong HTML)
+        //   - câu "Cùng nhau thống nhất..." (in nghiêng)
+        // Trả về số dòng đã chèn.
+        private static int InsertInfoRows(IXLWorksheet ws, int fromRow, string kipCa, string ngaySX,
+            IReadOnlyList<TaiKhoan?> thanhPhan, int lastCol)
+        {
+            // Khối cột theo độ rộng template: A = STT, B..D = Ông/Bà, E..H = Chức vụ, I..lastCol = BP
+            const int idxCol = 1, nameCol = 2, nameToCol = 4, chucVuCol = 5, chucVuToCol = 8, bpCol = 9;
+
+            var count = 3 + thanhPhan.Count;
+            ws.Row(fromRow - 1).InsertRowsBelow(count);
+            for (var r = fromRow; r < fromRow + count; r++)
+            {
+                ws.Row(r).Clear();            // bỏ style (font 28pt, border) kế thừa từ dòng tiêu đề
+                ws.Row(r).Height = 18;
+            }
+
+            // Sub-title: căn giữa, phần giá trị Kíp/Ngày in đậm như <strong> trong HTML
+            StyleTextRange(ws.Range(fromRow, 1, fromRow, lastCol), horizontal: XLAlignmentHorizontalValues.Center, fontSize: 12);
+            var sub = ws.Cell(fromRow, 1).CreateRichText();
+            void Run(string text, bool bold) => sub.AddText(text).SetFontName("Times New Roman").SetFontSize(12).SetBold(bold);
+            Run("Máy đúc 1 và 2     Kíp: ", false);
+            Run(kipCa, true);
+            Run("     Ngày: ", false);
+            Run(ngaySX, true);
+
+            var row = fromRow + 1;
+            ws.Cell(row, 1).Value = "Chúng tôi gồm:";
+            StyleTextRange(ws.Range(row, 1, row, lastCol));
+
+            for (var i = 0; i < thanhPhan.Count; i++)
+            {
+                row++;
+                var u = thanhPhan[i];
+
+                ws.Cell(row, idxCol).Value = $"{i + 1}.";
+                StyleTextRange(ws.Range(row, idxCol, row, idxCol), horizontal: XLAlignmentHorizontalValues.Right);
+
+                StyleTextRange(ws.Range(row, nameCol, row, nameToCol));
+                var name = ws.Cell(row, nameCol).CreateRichText();
+                name.AddText("Ông/Bà: ").SetFontName("Times New Roman").SetFontSize(11);
+                name.AddText(u?.HoVaTen ?? "-").SetFontName("Times New Roman").SetFontSize(11).SetBold(u != null);
+
+                ws.Cell(row, chucVuCol).Value = u != null ? $"Chức vụ: {u.ViTri?.TenViTri}" : "";
+                StyleTextRange(ws.Range(row, chucVuCol, row, chucVuToCol));
+
+                ws.Cell(row, bpCol).Value = u != null ? $"BP: {u.PhongBan?.TenNgan}" : "";
+                StyleTextRange(ws.Range(row, bpCol, row, lastCol));
+            }
+
+            row++;
+            ws.Cell(row, 1).Value = "Cùng nhau thống nhất lập Biên bản xác nhận sản lượng phôi tấm chi tiết như sau:";
+            StyleTextRange(ws.Range(row, 1, row, lastCol), italic: true);
+
+            return count;
+        }
+
+        // Khung ký cuối biên bản — 2 khu vực NM.HRC2 | P.QLCL như .signatures trong
+        // HRC2_BBXNSL_PhoiTam.html, nhưng để trống chữ ký/họ tên để nhà máy in ra ký tay.
+        private static void AddSignatureBlock(IXLWorksheet ws, int row, int lastCol)
+        {
+            // Chia đôi theo tổng độ rộng cột (các cột B..H trong template rộng hơn) để 2 khu vực cân nhau
+            var totalWidth = Enumerable.Range(1, lastCol).Sum(c => ws.Column(c).Width);
+            var splitCol = 1;
+            for (double acc = ws.Column(1).Width; acc < totalWidth / 2 && splitCol < lastCol - 1; acc += ws.Column(splitCol).Width)
+                splitCol++;
+
+            void Area(int fromCol, int toCol, string title)
+            {
+                ws.Cell(row, fromCol).Value = title;
+                StyleTextRange(ws.Range(row, fromCol, row, toCol), bold: true, horizontal: XLAlignmentHorizontalValues.Center);
+
+                ws.Cell(row + 1, fromCol).Value = "(Ký, ghi rõ họ tên)";
+                var note = ws.Range(row + 1, fromCol, row + 1, toCol);
+                StyleTextRange(note, italic: true, horizontal: XLAlignmentHorizontalValues.Center);
+                note.Style.Font.FontColor = XLColor.FromHtml("#555555");
+            }
+
+            Area(1, splitCol, "NM.HRC2");
+            Area(splitCol + 1, lastCol, "P.QLCL");
+            ws.Row(row + 2).Height = 60;      // chừa chỗ ký tay
         }
 
         // Dòng "Thành phần" trong biên bản PDF — cùng nguồn dữ liệu với chữ ký (Duc/Kho/Qlcl),
