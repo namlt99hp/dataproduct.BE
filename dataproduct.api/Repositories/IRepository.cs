@@ -625,4 +625,12 @@ namespace dataproduct.api.Repositories
         /// (2) Sổ Xuất-Nhập-Tồn (STD_XUAT_NHAP_TON_HRC1/STD_NXT_TOTAL_HRC1 — chi tiết + tổng hợp).</summary>
         Task<string?> GetInUseReasonAsync(int id);
     }
+
+    public interface ICanBangNLSourceRepository
+    {
+        // EXEC stored procedure nguồn (khai báo trong canbang-nl-config.json) — gom theo (Ngày SX, Ca, khóa tách dòng)
+        Task<List<CanBangNLSourceRow>> ExecAsync(
+            string database, string procedure, DateTime tuNgay, DateTime denNgay,
+            int? idLoCao, string breakdown, string paramsJson);
+    }
 }

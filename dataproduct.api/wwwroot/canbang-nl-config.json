@@ -1,0 +1,73 @@
+{
+  "config": {
+    "code": "LGO_NVL_RECONCILIATION",
+    "name": "Đối chứng nguyên vật liệu lò cao",
+    "description": "Đối chiếu khối lượng nguyên vật liệu giao nhận BBGN với lượng tiêu thụ thực tế tại lò cao",
+    "version": 2,
+    "enabled": true
+  },
+
+  "sources": {
+    "BBGN": {
+      "description": "Giao nhận NVL — PRODUCTDATA.dbo.Tbl_Report_BienBanGiaoNhan. params: idVatTu[] (bắt buộc), idPhongBanBG[], idPhongBanBN[], idXuongBG[], idXuongBN[], idTrangThai[], quantitySide BG|BN",
+      "database": "PRODUCTDATA",
+      "procedure": "dbo.sp_CanBangNL_BBGN",
+      "loCaoMode": "MAP"
+    },
+    "NVL_LG": {
+      "description": "Nạp liệu lò cao — PRODUCT_FORM: LG_NL_ChiTiet → LG_NL_NVL → LG_NL_NhomNVL. params: groupIds[], nvlIds[] (ít nhất 1)",
+      "database": "PRODUCT_FORM",
+      "procedure": "dbo.sp_CanBangNL_NapLieu",
+      "loCaoMode": "DIRECT"
+    }
+  },
+
+  "rules": [
+    {
+      "code": "COKE",
+      "name": "Cốc",
+      "description": "Đối chứng Cốc giao nhận với Cốc tiêu thụ tại lò cao",
+      "unit": "ton",
+      "enabled": true,
+
+      "generator": {
+        "items": [
+          {
+            "label": "Than coke 10-85mm",
+            "source": "BBGN",
+            "sourceText": "BBGN",
+            "breakdown": "NONE",
+            "params": {
+              "idVatTu": [486],
+              "idPhongBanBG": [62],
+              "idPhongBanBN": [63],
+              "idXuongBN": [149],
+              "idTrangThai": [1],
+              "quantitySide": "BG"
+            },
+            "loCaoMap": { "param": "idXuongBN", "map": {} }
+          }
+        ]
+      },
+
+      "consumer": {
+        "items": [
+          {
+            "label": "Cốc vào lò",
+            "source": "NVL_LG",
+            "sourceText": "SUM tất cả mẻ xuất vào lò",
+            "breakdown": "MATERIAL_NAME",
+            "params": {
+              "groupIds": [4, 5],
+              "nvlIds": []
+            }
+          }
+        ]
+      },
+
+      "standard": {
+        "lossRate": { "operator": "<=", "value": 2, "unit": "%", "absolute": true }
+      }
+    }
+  ]
+}
