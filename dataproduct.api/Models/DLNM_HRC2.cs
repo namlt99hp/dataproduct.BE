@@ -35,6 +35,10 @@ public partial class DLNM_HRC2
     public double? KLGangLongCR { get; set; }
     public double? KLThepPheGang { get; set; }
     public bool? IsTrungMeThoi { get; set; } = false;
+    /// <summary>True = mẻ được SP sync (sp_Sync_HRC2_FromNM) chèn vào SAU KHI phiếu của slot
+    /// (Ngay/Ca/Scope/BieuMau) này đã gửi duyệt (TinhTrang &gt;= DaGui). Các chỗ tổng hợp/tính toán
+    /// (Thống kê, Phân bổ...) phải loại trừ record này cho tới khi được xử lý qua Hiệu chỉnh.</summary>
+    public bool? IsSyncSauGui { get; set; } = false;
     public bool? IsDelete { get; set; } = false;
 
     [NotMapped]
