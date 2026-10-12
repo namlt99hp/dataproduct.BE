@@ -522,6 +522,9 @@ namespace dataproduct.api.Services
                     // FE cũ) → giữ nguyên override đã lưu trước đó, không đụng vào.
                     if (model.KLThepPhe.HasValue || model.GhiChu != null || model.IsManualMacThep.HasValue)
                         _context.DLNM_HRC2s.Update(existing);
+                    // Record đã được con người xem lại qua phiếu (Hiệu chỉnh) → coi như đã xử lý,
+                    // không còn bị loại khỏi Thống kê/Phân bổ nữa.
+                    existing.IsSyncSauGui = false;
                     dlnmMap[model.RowKey] = existing;
                     continue;
                 }
@@ -592,6 +595,9 @@ namespace dataproduct.api.Services
                     existing.IsChuyenCa = model.IsChuyenCa;
                     existing.NgaySx = model.Ngay;
                     existing.IsTrungMeThoi = isTrung;
+                    // Record đã được con người xem lại qua phiếu (Hiệu chỉnh) → coi như đã xử lý,
+                    // không còn bị loại khỏi Thống kê/Phân bổ nữa.
+                    existing.IsSyncSauGui = false;
                     _context.DLNM_HRC2s.Update(existing);
                     dlnm = existing;
                 }

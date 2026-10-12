@@ -1365,7 +1365,33 @@ namespace dataproduct.api.Repositories
 
         public async Task UpdateAsync(DLNM_HRC2 entity)
         {
-            _context.DLNM_HRC2s.Update(entity);
+            // entity là object FE gửi lên dựa trên snapshot đã tải TRƯỚC đó. Nếu dùng
+            // _context.DLNM_HRC2s.Update(entity) như cũ, EF đánh dấu Modified cho TOÀN BỘ
+            // cột, kể cả những cột mà FE không hề định sửa — nếu giữa lúc FE tải và lúc PUT,
+            // EnsureGangLongMetricsAsync/EnsureThepPheGangAsync (chạy ngầm mỗi khi /filter hoặc
+            // /force-sync qua cooldown) đã tính lại KLGangLongCCT/KLGangLongCR/KLThepPheGang,
+            // thì PUT này sẽ ghi đè mất giá trị mới đó bằng giá trị cũ trong snapshot (lost update).
+            var existing = await _context.DLNM_HRC2s.FindAsync(entity.ID);
+            if (existing == null)
+            {
+                _context.DLNM_HRC2s.Update(entity);
+                await _context.SaveChangesAsync();
+                return;
+            }
+
+            // Giữ nguyên các cột do job đồng bộ nền quản lý, không cho payload cũ ghi đè.
+            var currentGangLongCCT = existing.KLGangLongCCT;
+            var currentGangLongCR = existing.KLGangLongCR;
+            var currentThepPheGang = existing.KLThepPheGang;
+
+            // SetValues chỉ đánh dấu Modified cho field thực sự khác giá trị hiện có trong DB,
+            // thay vì ghi đè toàn dòng vô điều kiện.
+            _context.Entry(existing).CurrentValues.SetValues(entity);
+
+            existing.KLGangLongCCT = currentGangLongCCT;
+            existing.KLGangLongCR = currentGangLongCR;
+            existing.KLThepPheGang = currentThepPheGang;
+
             await _context.SaveChangesAsync();
         }
 
@@ -1990,6 +2016,10 @@ namespace dataproduct.api.Repositories
             else
                 query = query.Where(x => x.IsDelete != true);
 
+            // Mẻ SP sync chèn vào SAU KHI phiếu của slot này đã gửi duyệt — chưa được con người
+            // xác nhận qua Hiệu chỉnh, không được tính vào thống kê.
+            query = query.Where(x => x.IsSyncSauGui != true);
+
             // === 2. Total count ===
             // - Bản ghi NM: đếm theo REPORT_NO unique
             // - Bản ghi nhập tay IsNM=false không có REPORT_NO: đếm theo từng dòng
@@ -2575,6 +2605,10 @@ namespace dataproduct.api.Repositories
                 query = query.Where(x => x.IsDelete == true);
             else
                 query = query.Where(x => x.IsDelete != true);
+
+            // Mẻ SP sync chèn vào SAU KHI phiếu của slot này đã gửi duyệt — chưa được con người
+            // xác nhận qua Hiệu chỉnh, không được tính vào thống kê.
+            query = query.Where(x => x.IsSyncSauGui != true);
 
             // Lấy REPORT_NOs thực tế (de-dup giống SearchThongKeApiAsync: MAX ID per REPORT_NO)
             var filteredReportNos = query
