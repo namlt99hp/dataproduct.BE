@@ -619,6 +619,80 @@ namespace dataproduct.api.Repositories
 
             _ => throw new ArgumentOutOfRangeException(nameof(idCa), $"Ca không hợp lệ: {idCa}")
         };
+        // Khoảng cách tối đa (giây) giữa nhóm không có TS0 và mẻ có TS0 để coi là cùng 1 mẻ
+        private const int SoGiayToiDaGopMe = 120;
+
+
+        private static void GopMeBiTach(List<LG1_DuLieuNL> duLieuTho)
+        {
+            var theoGio = duLieuTho.Where(bg => bg.Time != null)
+                .GroupBy(bg => bg.Time!.Value)
+                .ToDictionary(nhom => nhom.Key, nhom => nhom.ToList());
+
+            var gioCoTS0 = theoGio
+                .Where(cap => cap.Value.Any(bg => bg.TagKey == "TS0"))
+                .Select(cap => cap.Key)
+                .OrderBy(gio => gio)
+                .ToList();
+            if (gioCoTS0.Count == 0) return;
+
+            var tagTheoMeDich = gioCoTS0.ToDictionary(
+                gio => gio, gio => theoGio[gio].Select(bg => bg.TagKey).ToHashSet());
+
+            foreach (var nhomMoCoi in theoGio.Where(cap => !gioCoTS0.Contains(cap.Key)).OrderBy(cap => cap.Key))
+            {
+                var gioSau = gioCoTS0.FirstOrDefault(gio => gio > nhomMoCoi.Key);
+                var gioTruoc = gioCoTS0.LastOrDefault(gio => gio < nhomMoCoi.Key);
+
+                var gioUngVien = new List<DateTime>();
+                if (gioSau != default && (gioSau - nhomMoCoi.Key).TotalSeconds <= SoGiayToiDaGopMe) gioUngVien.Add(gioSau);
+                if (gioTruoc != default && (nhomMoCoi.Key - gioTruoc).TotalSeconds <= SoGiayToiDaGopMe) gioUngVien.Add(gioTruoc);
+
+                var tagMoCoi = nhomMoCoi.Value.Select(bg => bg.TagKey).ToHashSet();
+                foreach (var gioDich in gioUngVien)
+                {
+                    if (tagTheoMeDich[gioDich].Overlaps(tagMoCoi)) continue;
+
+                    foreach (var bg in nhomMoCoi.Value) bg.Time = gioDich;
+                    tagTheoMeDich[gioDich].UnionWith(tagMoCoi);
+                    break;
+                }
+            }
+        }
+
+        // Số phút đọc lùi trước mốc đầu ca để lấy TS0 ngay trước mốc (dùng phân xử mốc giao ca)
+        private const int SoPhutDocLuiTruocMoc = 30;
+
+        /// <summary>
+        private static List<LG1_DuLieuNL> LocBanGhiMocGiaoCa(
+            List<LG1_DuLieuNL> duLieuTho, DateTime tuLuc, DateTime denLuc)
+        {
+            var mocDauCa = tuLuc.AddSeconds(-1); // 07:30:00 / 19:30:00 (đầu ca)
+            var mocCuoiCa = denLuc;                    // 19:30:00 / 07:30:00 (cuối ca)
+
+            var banGhiTS0 = duLieuTho.Where(bg => bg.TagKey == "TS0" && bg.Time != null && bg.Value != null).ToList();
+
+            // true = mốc "gio" thuộc ca cũ (TS0 nối tiếp), false = thuộc ca mới (TS0 đã reset)
+            // null = mốc không có TS0 để phân xử
+            bool? ThuocCaCu(DateTime gio)
+            {
+                var hienTai = banGhiTS0.FirstOrDefault(bg => bg.Time == gio);
+                if (hienTai == null) return null;
+                var truoc = banGhiTS0.Where(bg => bg.Time < gio).OrderBy(bg => bg.Time).LastOrDefault();
+                return truoc == null || hienTai.Value >= truoc.Value;
+            }
+
+            // Đầu ca: chỉ nhận mốc thuộc ca mới (không có TS0 hoặc không có mẻ trước thì không nhận)
+            var giuMocDau = ThuocCaCu(mocDauCa) == false;
+            // Cuối ca: nhận mốc thuộc ca cũ (không có TS0 thì giữ như cách tính cũ)
+            var giuMocCuoi = ThuocCaCu(mocCuoiCa) != false;
+
+            var ketQua = duLieuTho.Where(bg => bg.Time >= tuLuc && bg.Time < mocCuoiCa).ToList();
+            if (giuMocDau) ketQua.AddRange(duLieuTho.Where(bg => bg.Time == mocDauCa));
+            if (giuMocCuoi) ketQua.AddRange(duLieuTho.Where(bg => bg.Time == mocCuoiCa));
+            return ketQua.OrderBy(bg => bg.Time).ToList();
+        }
+
         public async Task<LGNLDuLieuSiLoResult> GetDuLieuSiloPivotAsync(DateTime ngay, int idCa, int idLoCao)
         {
             // 1. Lấy danh sách nhóm
@@ -764,12 +838,20 @@ namespace dataproduct.api.Repositories
             var tagKeys = tagTimeline.Keys.Append("TS0").Distinct().ToList();
             var rawData = await _context.LG1_DuLieuNL
                 .Where(d => d.ID_LoCao == idLoCao
-                         && d.Time >= timeFrom
+                         && d.Time >= timeFrom.AddSeconds(-1).AddMinutes(-SoPhutDocLuiTruocMoc)
                          && d.Time <= timeTo
                          && tagKeys.Contains(d.TagKey!))
                 .OrderBy(d => d.Time)
                 .AsNoTracking()
                 .ToListAsync();
+
+            // 8a. Một mẻ có thể bị SCADA ghi tách làm 2 thời điểm (vd lò 5: TS9..TS16 lúc 19:10:00 không
+            // có TS0, phần còn lại + TS0 lúc 19:11:00). Gộp nhóm "mồ côi" vào mẻ có TS0 gần nhất.
+            GopMeBiTach(rawData);
+
+            // 8b. Bản ghi nằm đúng mốc giao ca (07:30:00 / 19:30:00) có thể là mẻ CUỐI của ca
+            // trước (TS0 = 67) hoặc mẻ ĐẦU của ca sau (TS0 reset về 1). Phân xử theo số mẻ (TS0).
+            rawData = LocBanGhiMocGiaoCa(rawData, timeFrom, timeTo);
 
             // 9. Pivot
             var rows = rawData

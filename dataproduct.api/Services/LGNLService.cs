@@ -533,6 +533,10 @@ namespace dataproduct.api.Services
             // luôn tách thành dòng mới nối đuôi bảng.
             var soMeThuTuMap = new Dictionary<decimal, int>();
 
+            // SoMe → giờ của dòng SCADA hiện tại: bản ghi bảo toàn gộp vào mẻ này phải dùng giờ này,
+            // không giữ giờ cũ đã lưu, để 1 số mẻ chỉ có đúng 1 khung giờ trong DB.
+            var soMeThoiGianMap = new Dictionary<decimal, string>();
+
             foreach (var row in pivot.Rows)
             {
                 thuTu++;
@@ -543,7 +547,11 @@ namespace dataproduct.api.Services
                                  ? dt.ToString("HH:mm:ss")
                                  : "";
 
-                if (soMe.HasValue) soMeThuTuMap[soMe.Value] = thuTu;
+                if (soMe.HasValue)
+                {
+                    soMeThuTuMap[soMe.Value] = thuTu;
+                    soMeThoiGianMap[soMe.Value] = thoiGian;
+                }
 
                 // Map group → NVL → item (group-first)
                 foreach (var groupCol in pivot.Columns)
@@ -617,7 +625,9 @@ namespace dataproduct.api.Services
                 IDLoCao         = idLoCao,
                 Ngay            = ngay,
                 IDCa            = idCa,
-                ThoiGianNapLieu = r.ThoiGianNapLieu,
+                ThoiGianNapLieu = r.SoMe.HasValue && soMeThoiGianMap.TryGetValue(r.SoMe.Value, out var gioScada)
+                                    ? gioScada
+                                    : r.ThoiGianNapLieu,
                 SoMe            = r.SoMe,
                 MeGio           = r.MeGio,
                 CheDo           = r.CheDo,
