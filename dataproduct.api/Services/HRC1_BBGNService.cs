@@ -283,6 +283,18 @@ namespace dataproduct.api.Services
             if (req.IsThuNghiem.HasValue && req.IsThuNghiem != me.IsThuNghiem && me.TrangThaiPCN != null)
                 throw new InvalidOperationException("Mẻ đã có xác nhận/không xác nhận PCN. Cần Reset xác nhận PCN trước khi đổi Thử nghiệm.");
 
+            // Mẻ lên thẳng đã Chuyển ca đúc (NgaySXDucChuyen/CaDucChuyen) — routing đó được tính theo
+            // đích/máy đúc hiện tại. Nếu cho đổi đích (len_thang→tinh_luyen) hoặc đổi sang máy đúc khác
+            // ngay lúc này, NgaySXDucChuyen/CaDucChuyen sẽ trỏ sai (của máy/đích cũ) mà không ai biết để
+            // sửa lại. Phải Hủy chuyển ca (xóa NgaySXDucChuyen/CaDucChuyen) trước rồi mới cho đổi.
+            if (me.DichChuyen == "len_thang" && (me.NgaySXDucChuyen.HasValue || me.CaDucChuyen.HasValue))
+            {
+                var newDich = (P("dichChuyen") && req.DichChuyen is not null) ? req.DichChuyen : me.DichChuyen;
+                var newIdMayDuc = P("dichChuyen") ? req.IdMayDucDich : (P("idMayDucDich") ? req.IdMayDucDich : me.IdMayDucDich);
+                if (newDich != me.DichChuyen || newIdMayDuc != me.IdMayDucDich)
+                    throw new InvalidOperationException("Mẻ đã chuyển ca đúc. Cần hủy chuyển ca trước khi đổi đích tinh luyện/lên thẳng hoặc đổi máy đúc.");
+            }
+
             var oldDich = me.DichChuyen;
             var oldIdMayDucDich = me.IdMayDucDich;
             var old = Snapshot(me);
