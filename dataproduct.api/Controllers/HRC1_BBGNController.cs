@@ -149,6 +149,34 @@ namespace dataproduct.api.Controllers
             catch (Exception ex)                 { return StatusCode(500, ex.Message); }
         }
 
+        /// <summary>POST /api/hrc1/lo-thoi/chuyen-ca-duc — mẻ lên thẳng: chuyển routing mẻ sang phiếu Đúc ca trước/sau</summary>
+        [HttpPost("lo-thoi/chuyen-ca-duc")]
+        public async Task<IActionResult> ChuyenCaDucLoThoi([FromBody] HRC1_ChuyenCaDucRequest req)
+        {
+            try
+            {
+                await _svc.ChuyenCaDucLoThoiAsync(req.MeId, req.Huong, LayUserId());
+                return NoContent();
+            }
+            catch (KeyNotFoundException ex)      { return NotFound(ex.Message); }
+            catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
+            catch (Exception ex)                 { return StatusCode(500, ex.Message); }
+        }
+
+        /// <summary>POST /api/hrc1/lo-thoi/huy-chuyen-ca-duc — mẻ lên thẳng: hủy chuyển ca đúc (dùng chung logic hủy với tinh luyện)</summary>
+        [HttpPost("lo-thoi/huy-chuyen-ca-duc")]
+        public async Task<IActionResult> HuyChuyenCaDucLoThoi([FromBody] HRC1_ChuyenCaDucRequest req)
+        {
+            try
+            {
+                await _svc.HuyChuyenCaDucAsync(req.MeId, LayUserId());
+                return NoContent();
+            }
+            catch (KeyNotFoundException ex)      { return NotFound(ex.Message); }
+            catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
+            catch (Exception ex)                 { return StatusCode(500, ex.Message); }
+        }
+
         // -------------------------------------------------------
         // Tinh luyện
         // -------------------------------------------------------
