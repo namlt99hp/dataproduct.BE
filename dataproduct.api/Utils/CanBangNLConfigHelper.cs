@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using dataproduct.api.DTOs;
 
 namespace dataproduct.api.Utils
@@ -10,12 +9,12 @@ namespace dataproduct.api.Utils
     /// </summary>
     public class CanBangNLConfigHelper
     {
-        /// <summary>schema.procedure — tên SP được ghép vào câu EXEC nên chỉ cho phép ký tự định danh</summary>
-        public static readonly Regex ProcedureRef = new(@"^([A-Za-z_]\w*\.)?[A-Za-z_]\w*$", RegexOptions.Compiled);
-
-        public static readonly HashSet<string> Databases = new(StringComparer.OrdinalIgnoreCase) { "PRODUCTDATA", "PRODUCT_FORM" };
-        private static readonly HashSet<string> LoCaoModes = new(StringComparer.OrdinalIgnoreCase) { "DIRECT", "MAP", "NONE" };
-        private static readonly HashSet<string> Breakdowns = new(StringComparer.OrdinalIgnoreCase) { "NONE", "MATERIAL", "MATERIAL_NAME", "GROUP" };
+        private static readonly HashSet<string> ValidTypes = new(StringComparer.OrdinalIgnoreCase)
+            { "HTTP_BBGN", "LGNL_SILO" };
+        private static readonly HashSet<string> LoCaoModes = new(StringComparer.OrdinalIgnoreCase)
+            { "DIRECT", "MAP", "NONE" };
+        private static readonly HashSet<string> Breakdowns = new(StringComparer.OrdinalIgnoreCase)
+            { "NONE", "MATERIAL_NAME" };
 
         private static readonly JsonSerializerOptions JsonOpts = new()
         {
@@ -63,10 +62,10 @@ namespace dataproduct.api.Utils
 
             foreach (var (key, src) in cfg.Sources)
             {
-                if (!Databases.Contains(src.Database))
-                    errors.Add($"sources.{key}.database '{src.Database}' không hợp lệ (PRODUCTDATA | PRODUCT_FORM)");
-                if (!ProcedureRef.IsMatch(src.Procedure))
-                    errors.Add($"sources.{key}.procedure '{src.Procedure}' không hợp lệ (dạng schema.tenSP)");
+                if (!ValidTypes.Contains(src.Type))
+                    errors.Add($"sources.{key}.type '{src.Type}' không hợp lệ ({string.Join(" | ", ValidTypes)})");
+                if (src.Type.Equals("HTTP_BBGN", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(src.BaseUrl))
+                    errors.Add($"sources.{key}.baseUrl là bắt buộc khi type=HTTP_BBGN");
                 if (!LoCaoModes.Contains(src.LoCaoMode))
                     errors.Add($"sources.{key}.loCaoMode '{src.LoCaoMode}' không hợp lệ (DIRECT | MAP | NONE)");
             }
@@ -75,16 +74,13 @@ namespace dataproduct.api.Utils
                 foreach (var item in rule.Generator.Items.Concat(rule.Consumer.Items))
                 {
                     var p = $"rules.{rule.Code}.{item.Label}";
-                    var src = cfg.Sources.FirstOrDefault(s => s.Key.Equals(item.Source, StringComparison.OrdinalIgnoreCase)).Value;
-                    if (src == null)
+                    var hasSrc = cfg.Sources.Any(s => s.Key.Equals(item.Source, StringComparison.OrdinalIgnoreCase));
+                    if (!hasSrc)
                         errors.Add($"{p}: source '{item.Source}' chưa khai báo trong sources");
                     if (!Breakdowns.Contains(item.Breakdown))
-                        errors.Add($"{p}: breakdown '{item.Breakdown}' không hợp lệ (NONE | MATERIAL | MATERIAL_NAME | GROUP)");
+                        errors.Add($"{p}: breakdown '{item.Breakdown}' không hợp lệ ({string.Join(" | ", Breakdowns)})");
                     if (item.Params.ValueKind != JsonValueKind.Object)
                         errors.Add($"{p}: params phải là object JSON");
-                    if (src != null && src.LoCaoMode.Equals("MAP", StringComparison.OrdinalIgnoreCase)
-                        && item.LoCaoMap != null && string.IsNullOrWhiteSpace(item.LoCaoMap.Param))
-                        errors.Add($"{p}: loCaoMap.param là bắt buộc");
                 }
 
             if (errors.Count > 0)

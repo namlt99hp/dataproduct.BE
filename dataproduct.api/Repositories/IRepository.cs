@@ -628,9 +628,14 @@ namespace dataproduct.api.Repositories
 
     public interface ICanBangNLSourceRepository
     {
-        // EXEC stored procedure nguồn (khai báo trong canbang-nl-config.json) — gom theo (Ngày SX, Ca, khóa tách dòng)
-        Task<List<CanBangNLSourceRow>> ExecAsync(
-            string database, string procedure, DateTime tuNgay, DateTime denNgay,
-            int? idLoCao, string breakdown, string paramsJson);
+        // Gọi external BBGN HTTP API (BM_11/ThongKeSoLieuData), parse kip→Ca, trả rows mang klBG/klQuyKhoBG
+        Task<List<CanBangNLSourceRow>> ExecHttpBbgnAsync(
+            CanBangNLSourceConfig src, DateTime tuNgay, DateTime denNgay,
+            System.Text.Json.Nodes.JsonObject itemParams);
+
+        // Gọi GetDuLieuSiloPivotAsync cho từng (ca, idLoCao), tổng hợp theo nvlIds
+        // ca=null: gọi cả ca1+ca2; idLoCao=null: gọi tất cả lò trong src.LoCaoList
+        Task<List<CanBangNLSourceRow>> ExecLgnlSiloAsync(
+            DateTime ngay, int? ca, int? idLoCao, CanBangNLSourceConfig src, List<int> nvlIds);
     }
 }

@@ -3,9 +3,11 @@ using System.Text.Json;
 namespace dataproduct.api.DTOs
 {
     // ─── Cấu hình động: wwwroot/canbang-nl-config.json ─────────────────────────────
-    // Mỗi nguồn = 1 stored procedure (script: dataproduct.api/migrations/canbangnl_sp_*.sql), cùng chữ ký:
-    //   EXEC {procedure} @TuNgay, @DenNgay, @IDLoCao, @Breakdown, @Params (JSON = item.params)
-    // trả về: Ngay, Ca, BreakdownKey, BreakdownName, BreakdownOrder, KhoiLuongAm, KhoiLuongKho
+    // Nguồn dữ liệu:
+    //   HTTP_BBGN: GET https://report.hoaphatdungquat.vn/BM_11/ThongKeSoLieuData
+    //              → { data: [{kip, klBG, klQuyKhoBG, ngay, ...}] }. kip "A"→ca1, "B"→ca2.
+    //   LGNL_SILO: ILGNLRepository.GetDuLieuSiloPivotAsync(ngay, ca, idLoCao)
+    //              → pivot rows keyed by NVL ID (string).
 
     public class CanBangNLConfig
     {
@@ -25,16 +27,22 @@ namespace dataproduct.api.DTOs
 
     public class CanBangNLSourceConfig
     {
+        /// <summary>HTTP_BBGN | LGNL_SILO</summary>
+        public string Type { get; set; } = "";
         public string? Description { get; set; }
-        /// <summary>PRODUCTDATA → ProductDataMasterDbContext; PRODUCT_FORM → ProductFormContext</summary>
-        public string Database { get; set; } = "";
-        /// <summary>schema.procedure, vd dbo.sp_CanBangNL_NapLieu</summary>
-        public string Procedure { get; set; } = "";
-        /// <summary>
-        /// DIRECT: SP tự lọc theo @IDLoCao.
-        /// MAP: SP không có lò cao — API tra item.loCaoMap để ghi đè 1 tham số trong @Params (vd idXuongBN), @IDLoCao = NULL.
-        /// NONE: không tách được theo lò cao (luôn lấy tổng, kèm cảnh báo).
-        /// </summary>
+
+        // ── HTTP_BBGN ────────────────────────────────────────────────────────────
+        /// <summary>Base URL của external BBGN API, vd https://report.hoaphatdungquat.vn/BM_11/ThongKeSoLieuData</summary>
+        public string? BaseUrl { get; set; }
+        /// <summary>Số bản ghi mỗi trang khi gọi HTTP (mặc định 500 đủ cho 1 ngày)</summary>
+        public int PageSize { get; set; } = 500;
+
+        // ── LGNL_SILO ────────────────────────────────────────────────────────────
+        /// <summary>Danh sách IDLoCao khi idLoCao=null (tất cả lò). Chỉ dùng cho LGNL_SILO.</summary>
+        public List<int> LoCaoList { get; set; } = [1, 2, 3, 4, 5, 6];
+
+        // ── Chung ────────────────────────────────────────────────────────────────
+        /// <summary>DIRECT: truyền idLoCao thẳng | MAP: tra loCaoMap ghi đè 1 param | NONE: không tách</summary>
         public string LoCaoMode { get; set; } = "NONE";
     }
 
@@ -62,20 +70,20 @@ namespace dataproduct.api.DTOs
         public string Source { get; set; } = "";
         /// <summary>Chữ hiển thị ở cột Generate data / Consume data</summary>
         public string? SourceText { get; set; }
-        /// <summary>NONE = 1 dòng tổng (tên = label) | MATERIAL | MATERIAL_NAME | GROUP — truyền vào @Breakdown</summary>
+        /// <summary>NONE = 1 dòng tổng | MATERIAL_NAME = 1 dòng / tên NVL</summary>
         public string Breakdown { get; set; } = "NONE";
-        /// <summary>Object JSON truyền nguyên vào @Params của SP</summary>
+        /// <summary>Params truyền vào nguồn (HTTP query params hoặc LGNL params)</summary>
         public JsonElement Params { get; set; }
-        /// <summary>Chỉ dùng khi source.loCaoMode = MAP</summary>
+        /// <summary>Chỉ dùng khi source.loCaoMode = MAP — ghi đè 1 param theo lò cao đang chọn</summary>
         public CanBangNLLoCaoMapConfig? LoCaoMap { get; set; }
     }
 
     public class CanBangNLLoCaoMapConfig
     {
-        /// <summary>Tên key trong params bị ghi đè khi chọn lò cao, vd "idXuongBN"</summary>
+        /// <summary>Tên param trong Params bị ghi đè khi chọn lò cao</summary>
         public string Param { get; set; } = "";
-        /// <summary>IDLoCao → giá trị mảng thay cho params[Param]. Thiếu lò → lấy tổng + cảnh báo</summary>
-        public Dictionary<string, List<int>> Map { get; set; } = new();
+        /// <summary>IDLoCao → xưởng ID (single int). Thiếu lò → không filter + cảnh báo.</summary>
+        public Dictionary<string, int> Map { get; set; } = new();
     }
 
     public class CanBangNLStandardConfig
@@ -93,7 +101,27 @@ namespace dataproduct.api.DTOs
         public bool Absolute { get; set; } = true;
     }
 
-    // ─── Kết quả trả về FE (khớp dataproduct.client/src/services/CanBangNLApi.ts) ─
+    // ─── BBGN HTTP API response ────────────────────────────────────────────────────
+
+    public class BbgnApiResponse
+    {
+        public List<BbgnApiItem> Data { get; set; } = new();
+    }
+
+    /// <summary>1 bản ghi BBGN từ external API BM_11/ThongKeSoLieuData</summary>
+    public class BbgnApiItem
+    {
+        /// <summary>Ngày biên bản dạng "dd/MM/yyyy"</summary>
+        public string? Ngay { get; set; }
+        /// <summary>"A" = ca 1 (ngày), "B" = ca 2 (đêm)</summary>
+        public string? Kip { get; set; }
+        /// <summary>Khối lượng bên giao (ẩm), kiểu string vd "816.126"</summary>
+        public string? KlBG { get; set; }
+        /// <summary>Khối lượng quy khô bên giao, kiểu string vd "813.106"</summary>
+        public string? KlQuyKhoBG { get; set; }
+    }
+
+    // ─── Kết quả trả về FE (khớp dataproduct.client/src/services/CanBangNLApi.ts) ──
 
     public class CanBangNLBalanceItemDto
     {
@@ -112,7 +140,7 @@ namespace dataproduct.api.DTOs
         public bool StandardAbsolute { get; set; } = true;
         public List<CanBangNLBalanceItemDto> Generators { get; set; } = new();
         public List<CanBangNLBalanceItemDto> Consumers { get; set; } = new();
-        /// <summary>Cảnh báo hiển thị cho người dùng (vd BBGN không tách được theo lò cao)</summary>
+        /// <summary>Cảnh báo hiển thị cho người dùng (vd nguồn không tách được theo lò cao)</summary>
         public List<string> Notes { get; set; } = new();
     }
 
@@ -127,12 +155,12 @@ namespace dataproduct.api.DTOs
         public decimal? LossRate { get; set; }
     }
 
-    /// <summary>1 dòng dữ liệu thô đã gom theo (Ngày SX, Ca, khóa tách dòng) — dùng chung cho mọi nguồn</summary>
+    /// <summary>1 dòng dữ liệu thô từ bất kỳ nguồn nào — dùng chung trong CanBangNLSourceRepository</summary>
     public class CanBangNLSourceRow
     {
         public DateTime Ngay { get; set; }
         public int? Ca { get; set; }
-        /// <summary>Khóa tách dòng (ID NVL / ID nhóm), 0 nếu không tách</summary>
+        /// <summary>Khóa tách dòng (ID NVL / 0 nếu không tách)</summary>
         public int BreakdownKey { get; set; }
         public string? BreakdownName { get; set; }
         public int BreakdownOrder { get; set; }

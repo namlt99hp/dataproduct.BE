@@ -2,22 +2,23 @@
   "config": {
     "code": "LGO_NVL_RECONCILIATION",
     "name": "Đối chứng nguyên vật liệu lò cao",
-    "description": "Đối chiếu khối lượng nguyên vật liệu giao nhận BBGN với lượng tiêu thụ thực tế tại lò cao",
-    "version": 2,
+    "description": "Đối chiếu khối lượng NVL giao nhận BBGN với lượng tiêu thụ thực tế tại lò cao",
+    "version": 3,
     "enabled": true
   },
 
   "sources": {
-    "BBGN": {
-      "description": "Giao nhận NVL — PRODUCTDATA.dbo.Tbl_Report_BienBanGiaoNhan. params: idVatTu[] (bắt buộc), idPhongBanBG[], idPhongBanBN[], idXuongBG[], idXuongBN[], idTrangThai[], quantitySide BG|BN",
-      "database": "PRODUCTDATA",
-      "procedure": "dbo.sp_CanBangNL_BBGN",
+    "BBGN_HTTP": {
+      "type": "HTTP_BBGN",
+      "description": "Giao nhận NVL — external BM_11 API (report.hoaphatdungquat.vn/BM_11/ThongKeSoLieuData). kip A→ca1, B→ca2.",
+      "baseUrl": "https://report.hoaphatdungquat.vn/BM_11/ThongKeSoLieuData",
+      "pageSize": 500,
       "loCaoMode": "MAP"
     },
-    "NVL_LG": {
-      "description": "Nạp liệu lò cao — PRODUCT_FORM: LG_NL_ChiTiet → LG_NL_NVL → LG_NL_NhomNVL. params: groupIds[], nvlIds[] (ít nhất 1)",
-      "database": "PRODUCT_FORM",
-      "procedure": "dbo.sp_CanBangNL_NapLieu",
+    "LGNL_SILO": {
+      "type": "LGNL_SILO",
+      "description": "Nạp liệu lò cao — GetDuLieuSiloPivotAsync, tổng hợp theo nvlIds trong params.",
+      "loCaoList": [1, 2, 3, 4, 5, 6],
       "loCaoMode": "DIRECT"
     }
   },
@@ -26,26 +27,34 @@
     {
       "code": "COKE",
       "name": "Cốc",
-      "description": "Đối chứng Cốc giao nhận với Cốc tiêu thụ tại lò cao",
+      "description": "Đối chứng Cốc giao nhận (10-80mm) với Cốc tiêu thụ (nạp lò) + Cốc xuất đi (<10mm)",
       "unit": "ton",
       "enabled": true,
 
       "generator": {
         "items": [
           {
-            "label": "Than coke 10-85mm",
-            "source": "BBGN",
+            "label": "Than coke 10-80mm",
+            "source": "BBGN_HTTP",
             "sourceText": "BBGN",
             "breakdown": "NONE",
             "params": {
-              "idVatTu": [486],
-              "idPhongBanBG": [62],
-              "idPhongBanBN": [63],
-              "idXuongBN": [149],
-              "idTrangThai": [1],
-              "quantitySide": "BG"
+              "ID_VatTu": 486,
+              "ID_PhongBanBG": 62,
+              "ID_PhongBanBN": 63,
+              "ID_XuongBN": null
             },
-            "loCaoMap": { "param": "idXuongBN", "map": {} }
+            "loCaoMap": {
+              "param": "ID_XuongBN",
+              "map": {
+                "1": 82,
+                "2": 83,
+                "3": 84,
+                "4": 85,
+                "5": 149,
+                "6": 185
+              }
+            }
           }
         ]
       },
@@ -53,13 +62,35 @@
       "consumer": {
         "items": [
           {
-            "label": "Cốc vào lò",
-            "source": "NVL_LG",
+            "label": "Nạp liệu lò cao",
+            "source": "LGNL_SILO",
             "sourceText": "SUM tất cả mẻ xuất vào lò",
             "breakdown": "MATERIAL_NAME",
             "params": {
-              "groupIds": [4, 5],
-              "nvlIds": []
+              "nvlIds": [127, 150, 93]
+            }
+          },
+          {
+            "label": "Than coke <10mm",
+            "source": "BBGN_HTTP",
+            "sourceText": "BBGN",
+            "breakdown": "NONE",
+            "params": {
+              "ID_VatTu": 484,
+              "ID_PhongBanBG": 63,
+              "ID_XuongBG": null,
+              "ID_PhongBanBN": 66
+            },
+            "loCaoMap": {
+              "param": "ID_XuongBG",
+              "map": {
+                "1": 82,
+                "2": 83,
+                "3": 84,
+                "4": 85,
+                "5": 149,
+                "6": 185
+              }
             }
           }
         ]

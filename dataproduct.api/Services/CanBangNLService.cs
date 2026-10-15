@@ -60,7 +60,7 @@ namespace dataproduct.api.Services
             var denNgay = ngay.Date;
             var tuNgay = denNgay.AddDays(-(soNgay - 1));
 
-            // 1 lần truy vấn cho cả khoảng ngày / mỗi item (không lặp từng ngày)
+            // HTTP_BBGN: 1 request/item cho cả khoảng ngày; LGNL_SILO: song song từng ngày trong LoadItemAsync
             var genRows = new List<CanBangNLSourceRow>();
             foreach (var item in rule.Generator.Items)
                 genRows.AddRange((await LoadItemAsync(cfg, item, tuNgay, denNgay, idLoCao)).Rows);
@@ -138,35 +138,44 @@ namespace dataproduct.api.Services
             CanBangNLConfig cfg, CanBangNLItemConfig item, DateTime tuNgay, DateTime denNgay, int? idLoCao)
         {
             var src = cfg.Sources.First(s => s.Key.Equals(item.Source, StringComparison.OrdinalIgnoreCase)).Value;
-
-            // item.params truyền nguyên vào @Params; chế độ MAP ghi đè 1 key theo lò cao đang chọn
-            var prms = JsonNode.Parse(item.Params.GetRawText()) as JsonObject ?? new JsonObject();
-            int? spLoCao = null;
             string? note = null;
 
-            if (idLoCao.HasValue)
+            switch (src.Type.ToUpperInvariant())
             {
-                var mode = src.LoCaoMode.ToUpperInvariant();
-                if (mode == "DIRECT")
+                case "HTTP_BBGN":
                 {
-                    spLoCao = idLoCao;
+                    var prms = JsonNode.Parse(item.Params.GetRawText()) as JsonObject ?? new JsonObject();
+                    if (idLoCao.HasValue && item.LoCaoMap != null)
+                    {
+                        if (item.LoCaoMap.Map.TryGetValue(idLoCao.Value.ToString(), out var xId))
+                            prms[item.LoCaoMap.Param] = JsonValue.Create(xId);
+                        else
+                            note = $"\"{item.Label}\" chưa cấu hình loCaoMap cho lò cao {idLoCao} — đang lấy tổng tất cả.";
+                    }
+                    var rows = await _sourceRepo.ExecHttpBbgnAsync(src, tuNgay, denNgay, prms);
+                    return (rows, note);
                 }
-                else if (mode == "MAP"
-                         && item.LoCaoMap != null
-                         && item.LoCaoMap.Map.TryGetValue(idLoCao.Value.ToString(), out var vals)
-                         && vals.Count > 0)
+                case "LGNL_SILO":
                 {
-                    prms[item.LoCaoMap.Param] = new JsonArray(vals.Select(v => (JsonNode?)JsonValue.Create(v)).ToArray());
+                    var nvlIds = ExtractNvlIds(item.Params);
+                    // LGNL_SILO chỉ hỗ trợ 1 ngày/lần — gọi song song từng ngày trong khoảng
+                    var days = Enumerable.Range(0, (int)(denNgay.Date - tuNgay.Date).TotalDays + 1)
+                                        .Select(i => tuNgay.Date.AddDays(i));
+                    var results = await Task.WhenAll(
+                        days.Select(d => _sourceRepo.ExecLgnlSiloAsync(d, null, idLoCao, src, nvlIds)));
+                    return (results.SelectMany(r => r).ToList(), note);
                 }
-                else
-                {
-                    note = $"\"{item.Label}\" (nguồn {item.Source}) chưa cấu hình tách theo lò cao — đang lấy tổng của tất cả lò.";
-                }
+                default:
+                    throw new InvalidOperationException($"Loại nguồn '{src.Type}' chưa được hỗ trợ.");
             }
+        }
 
-            var rows = await _sourceRepo.ExecAsync(
-                src.Database, src.Procedure, tuNgay, denNgay, spLoCao, item.Breakdown, prms.ToJsonString());
-            return (rows, note);
+        private static List<int> ExtractNvlIds(System.Text.Json.JsonElement paramsEl)
+        {
+            if (paramsEl.TryGetProperty("nvlIds", out var arr)
+                && arr.ValueKind == System.Text.Json.JsonValueKind.Array)
+                return arr.EnumerateArray().Select(e => e.GetInt32()).ToList();
+            return [];
         }
     }
 }
