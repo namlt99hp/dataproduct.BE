@@ -157,7 +157,7 @@ namespace dataproduct.api.Services
                 }
                 case "LGNL_SILO":
                 {
-                    var nvlIds = ExtractNvlIds(item.Params);
+                    var nvlIds = ExtractNhomNVLIds(item.Params);
                     // LGNL_SILO chỉ hỗ trợ 1 ngày/lần — gọi song song từng ngày trong khoảng
                     var days = Enumerable.Range(0, (int)(denNgay.Date - tuNgay.Date).TotalDays + 1)
                                         .Select(i => tuNgay.Date.AddDays(i));
@@ -170,9 +170,9 @@ namespace dataproduct.api.Services
             }
         }
 
-        private static List<int> ExtractNvlIds(System.Text.Json.JsonElement paramsEl)
+        private static List<int> ExtractNhomNVLIds(System.Text.Json.JsonElement paramsEl)
         {
-            if (paramsEl.TryGetProperty("nvlIds", out var arr)
+            if (paramsEl.TryGetProperty("idNhomNVLs", out var arr)
                 && arr.ValueKind == System.Text.Json.JsonValueKind.Array)
                 return arr.EnumerateArray().Select(e => e.GetInt32()).ToList();
             return [];

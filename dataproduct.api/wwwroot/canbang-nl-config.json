@@ -67,7 +67,7 @@
             "sourceText": "SUM tất cả mẻ xuất vào lò",
             "breakdown": "MATERIAL_NAME",
             "params": {
-              "nvlIds": [127, 150, 93]
+              "idNhomNVLs": [4, 5]
             }
           },
           {

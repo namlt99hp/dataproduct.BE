@@ -84,7 +84,7 @@ namespace dataproduct.api.Repositories
         // ─── LGNL_SILO ────────────────────────────────────────────────────────────
 
         public async Task<List<CanBangNLSourceRow>> ExecLgnlSiloAsync(
-            DateTime ngay, int? ca, int? idLoCao, CanBangNLSourceConfig src, List<int> nvlIds)
+            DateTime ngay, int? ca, int? idLoCao, CanBangNLSourceConfig src, List<int> nhomNVLIds)
         {
             var caList = ca.HasValue ? [ca.Value] : new[] { 1, 2 };
             var loCaoList = idLoCao.HasValue ? [idLoCao.Value] : src.LoCaoList.ToArray();
@@ -92,7 +92,7 @@ namespace dataproduct.api.Repositories
             var tasks = (
                 from c in caList
                 from lc in loCaoList
-                select FetchSingleAsync(ngay, c, lc, nvlIds)
+                select FetchSingleAsync(ngay, c, lc, nhomNVLIds)
             ).ToList();
 
             var allRows = (await Task.WhenAll(tasks)).SelectMany(r => r).ToList();
@@ -116,7 +116,7 @@ namespace dataproduct.api.Repositories
         }
 
         private async Task<List<CanBangNLSourceRow>> FetchSingleAsync(
-            DateTime ngay, int ca, int idLoCao, IReadOnlyList<int> nvlIds)
+            DateTime ngay, int ca, int idLoCao, IReadOnlyList<int> nhomNVLIds)
         {
             await _siloSem.WaitAsync();
             try
@@ -124,6 +124,11 @@ namespace dataproduct.api.Repositories
                 // Scope riêng → DbContext riêng, tránh "second operation on same context" khi Task.WhenAll
                 await using var scope = _scopeFactory.CreateAsyncScope();
                 var lgnlRepo = scope.ServiceProvider.GetRequiredService<ILGNLRepository>();
+
+                // Resolve NVL IDs cho lò cao này từ nhóm — mỗi lò có NVL riêng (lò 5: cốc vụn, lò 1-4,6: than cốc)
+                var nvlIds = await lgnlRepo.GetNvlIdsByNhomAsync(nhomNVLIds, idLoCao);
+                if (nvlIds.Count == 0) return [];
+
                 var pivot = await lgnlRepo.GetDuLieuSiloPivotAsync(ngay, ca, idLoCao);
 
                 // Build name + order lookup from flattened columns

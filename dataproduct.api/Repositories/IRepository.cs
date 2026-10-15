@@ -427,6 +427,9 @@ namespace dataproduct.api.Repositories
 
         // Phiếu
         Task<BmPhieu?> GetPhieuByIdAsync(Guid idPhieu);
+
+        // Lookup NVL IDs theo nhóm + lò cao (dùng cho Cân bằng NVL)
+        Task<List<int>> GetNvlIdsByNhomAsync(IEnumerable<int> nhomNVLIds, int idLoCao);
     }
 
     public interface IBBGN_ThepLongRepository
@@ -636,9 +639,9 @@ namespace dataproduct.api.Repositories
             CanBangNLSourceConfig src, DateTime tuNgay, DateTime denNgay,
             System.Text.Json.Nodes.JsonObject itemParams);
 
-        // Gọi GetDuLieuSiloPivotAsync cho từng (ca, idLoCao), tổng hợp theo nvlIds
+        // Gọi GetDuLieuSiloPivotAsync cho từng (ca, idLoCao), resolve nhomNVLIds → nvlIds per lò cao
         // ca=null: gọi cả ca1+ca2; idLoCao=null: gọi tất cả lò trong src.LoCaoList
         Task<List<CanBangNLSourceRow>> ExecLgnlSiloAsync(
-            DateTime ngay, int? ca, int? idLoCao, CanBangNLSourceConfig src, List<int> nvlIds);
+            DateTime ngay, int? ca, int? idLoCao, CanBangNLSourceConfig src, List<int> nhomNVLIds);
     }
 }

@@ -999,5 +999,18 @@ namespace dataproduct.api.Repositories
 
             return await query.AsNoTracking().ToListAsync();
         }
+
+        public async Task<List<int>> GetNvlIdsByNhomAsync(IEnumerable<int> nhomNVLIds, int idLoCao)
+        {
+            return await _context.LG_NL_NVL
+                .Where(n => n.IDNhomNVL != null
+                         && nhomNVLIds.Contains(n.IDNhomNVL.Value)
+                         && n.IDLoCao == idLoCao
+                         && n.IsDelete != true)
+                .OrderBy(n => n.ThuTu)
+                .AsNoTracking()
+                .Select(n => n.ID)
+                .ToListAsync();
+        }
     }
 }
