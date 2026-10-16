@@ -100,7 +100,7 @@ namespace dataproduct.api.Services
             var result = new List<CanBangNLBalanceItemDto>();
             foreach (var item in items)
             {
-                var (rows, note) = await LoadItemAsync(cfg, item, ngay, ngay, idLoCao);
+                var (rows, note) = await LoadItemAsync(cfg, item, ngay, ngay, idLoCao, ca);
                 if (note != null) notes.Add(note);
                 if (ca.HasValue) rows = rows.Where(r => r.Ca == ca).ToList();
 
@@ -135,7 +135,7 @@ namespace dataproduct.api.Services
         }
 
         private async Task<(List<CanBangNLSourceRow> Rows, string? Note)> LoadItemAsync(
-            CanBangNLConfig cfg, CanBangNLItemConfig item, DateTime tuNgay, DateTime denNgay, int? idLoCao)
+            CanBangNLConfig cfg, CanBangNLItemConfig item, DateTime tuNgay, DateTime denNgay, int? idLoCao, int? ca = null)
         {
             var src = cfg.Sources.First(s => s.Key.Equals(item.Source, StringComparison.OrdinalIgnoreCase)).Value;
             string? note = null;
@@ -152,7 +152,7 @@ namespace dataproduct.api.Services
                         else
                             note = $"\"{item.Label}\" chưa cấu hình loCaoMap cho lò cao {idLoCao} — đang lấy tổng tất cả.";
                     }
-                    var rows = await _sourceRepo.ExecHttpBbgnAsync(src, tuNgay, denNgay, prms);
+                    var rows = await _sourceRepo.ExecHttpBbgnAsync(src, tuNgay, denNgay, prms, ca);
                     return (rows, note);
                 }
                 case "LGNL_SILO":

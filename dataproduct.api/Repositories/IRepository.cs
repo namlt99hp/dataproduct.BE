@@ -636,9 +636,10 @@ namespace dataproduct.api.Repositories
     public interface ICanBangNLSourceRepository
     {
         // Gọi external BBGN HTTP API (BM_11/ThongKeSoLieuData), parse kip→Ca, trả rows mang klBG/klQuyKhoBG
+        // ca=1 (ngày) / ca=2 (đêm) / null = không lọc (lấy tất cả)
         Task<List<CanBangNLSourceRow>> ExecHttpBbgnAsync(
             CanBangNLSourceConfig src, DateTime tuNgay, DateTime denNgay,
-            System.Text.Json.Nodes.JsonObject itemParams);
+            System.Text.Json.Nodes.JsonObject itemParams, int? ca = null);
 
         // Gọi GetDuLieuSiloPivotAsync cho từng (ca, idLoCao), resolve nhomNVLIds → nvlIds per lò cao
         // ca=null: gọi cả ca1+ca2; idLoCao=null: gọi tất cả lò trong src.LoCaoList

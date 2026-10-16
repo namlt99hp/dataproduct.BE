@@ -7,7 +7,7 @@ using dataproduct.api.DTOs;
 namespace dataproduct.api.Repositories
 {
     // Nguồn dữ liệu Cân bằng NL:
-    //   HTTP_BBGN  → GET BM_11/ThongKeSoLieuData, parse { data: [] }, kip A→ca1 B→ca2
+    //   HTTP_BBGN  → GET BM_11/ThongKeSoLieuData, parse { data: [] }, ca truyền thẳng vào query param
     //   LGNL_SILO  → ILGNLRepository.GetDuLieuSiloPivotAsync, sum rows theo nvlIds
     // FetchSingleAsync tạo scope mới mỗi lần để tránh concurrent DbContext trên cùng 1 instance.
     public class CanBangNLSourceRepository : ICanBangNLSourceRepository
@@ -28,7 +28,7 @@ namespace dataproduct.api.Repositories
 
         public async Task<List<CanBangNLSourceRow>> ExecHttpBbgnAsync(
             CanBangNLSourceConfig src, DateTime tuNgay, DateTime denNgay,
-            JsonObject itemParams)
+            JsonObject itemParams, int? ca = null)
         {
             var queryParts = new List<string>
             {
@@ -37,6 +37,9 @@ namespace dataproduct.api.Repositories
                 "page=1",
                 $"pageSize={src.PageSize}"
             };
+
+            if (ca.HasValue)
+                queryParts.Add($"ca={ca.Value}");
 
             foreach (var kv in itemParams)
             {
@@ -53,7 +56,7 @@ namespace dataproduct.api.Repositories
                 .Select(item => new CanBangNLSourceRow
                 {
                     Ngay = ParseNgay(item.Ngay, tuNgay),
-                    Ca = MapKip(item.Kip),
+                    Ca = ca,
                     BreakdownKey = 0,
                     BreakdownName = null,
                     BreakdownOrder = 0,
@@ -62,13 +65,6 @@ namespace dataproduct.api.Repositories
                 })
                 .ToList();
         }
-
-        private static int? MapKip(string? kip) => kip?.Trim().ToUpperInvariant() switch
-        {
-            "A" => 1,
-            "B" => 2,
-            _ => null
-        };
 
         private static DateTime ParseNgay(string? raw, DateTime fallback)
         {
