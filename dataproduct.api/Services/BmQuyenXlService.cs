@@ -107,13 +107,29 @@ namespace dataproduct.api.Services
                 .Distinct()
                 .ToList();
 
+            // Kho dữ liệu (vung 5): mã KDL_* có QuyenChucNang = 5 (XEM)
+            var kdlForms = data
+                .Where(x => x.MaBm != null && x.MaBm.StartsWith("KDL_") && x.QuyenChucNang == (byte)QuyenChucNangEnum.XEM)
+                .Select(x => x.MaBm!.Trim())
+                .Distinct()
+                .ToList();
+
+            // Quản trị (vung 6): mã QTRI_* có QuyenChucNang = 1 (XULY)
+            var qtriForms = data
+                .Where(x => x.MaBm != null && x.MaBm.StartsWith("QTRI_") && x.QuyenChucNang == (byte)QuyenChucNangEnum.XULY)
+                .Select(x => x.MaBm!.Trim())
+                .Distinct()
+                .ToList();
+
             return new MenuPermissionsDto
             {
                 ProcessingForms = processing,
                 ApprovingForms = approving,
                 ViewingForms = viewing,
                 ChotPhieuForms = chotPhieu,
-                ExtraQuyens = extraQuyens
+                ExtraQuyens = extraQuyens,
+                KdlForms = kdlForms,
+                QtriForms = qtriForms,
             };
         }
 
