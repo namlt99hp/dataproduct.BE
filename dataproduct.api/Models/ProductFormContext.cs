@@ -136,8 +136,13 @@ public partial class ProductFormContext : DbContext
     public virtual DbSet<LG_PB_TyLeNhom> LG_PB_TyLeNhom { get; set; }
     public virtual DbSet<LG_PB_KetQuaPhanBo> LG_PB_KetQuaPhanBo { get; set; }
     public virtual DbSet<LG_PB_Map_NvlCVH_LoCao> LG_PB_Map_NvlCVH_LoCao { get; set; }
+
+    // NM.NL — kết quả SP, không có PK
+    public DbSet<CanBangTaiRow> CanBangTaiRows => Set<CanBangTaiRow>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<CanBangTaiRow>().HasNoKey();
 
 
         modelBuilder.Entity<BkNguyenLieu>(entity =>

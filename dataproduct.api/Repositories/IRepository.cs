@@ -40,6 +40,7 @@ namespace dataproduct.api.Repositories
         Task AddAsync(BkNguyenLieu entity);
         Task UpdateAsync(BkNguyenLieu entity);
         Task DeleteAsync(int id);
+        Task<List<CanBangTaiRow>> GetCanBangTaiAsync(DateOnly ngaySX);
     }
     public interface IPhieuRepository
     {
