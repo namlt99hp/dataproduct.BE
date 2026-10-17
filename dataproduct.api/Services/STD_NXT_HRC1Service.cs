@@ -43,6 +43,16 @@ namespace dataproduct.api.Services
             return await _repo.KhongPhanBoAsync(entity);
         }
 
+        public async Task<bool> ResetAllAsync(STD_NXT_HRC1_ResetAllDto request)
+        {
+            return await _repo.ResetAllAsync(request);
+        }
+
+        public async Task<List<string>> GetNegativeThongKePhuLieuAsync(DateTime ngaySX, int ca, string bieuMau)
+        {
+            return await _repo.GetNegativeThongKePhuLieuAsync(ngaySX, ca, bieuMau);
+        }
+
         public async Task<List<STD_NXT_HRC1_NhapXuatTonRow>> GetNhapXuatTonAsync(STD_NXT_HRC1_NhapXuatTonSearchRequest request)
         {
             return await _repo.GetNhapXuatTonAsync(request);

@@ -159,6 +159,8 @@ namespace dataproduct.api.Repositories
         Task<bool> PhanBoAsync(STD_NXT_HRC2_PhanBoDto entity);
         Task<bool> ThuHoiPhanBoAsync(STD_NXT_HRC2_PhanBoDto entity);
         Task<bool> KhongPhanBoAsync(STD_NXT_HRC2_KhongPhanBoDto entity);
+        Task<bool> ResetAllAsync(STD_NXT_HRC2_ResetAllDto request);
+        Task<List<string>> GetNegativeThongKePhuLieuAsync(DateTime ngaySX, int ca, string bieuMau);
         Task<List<STD_NXT_HRC2_NhapXuatTonRow>> GetNhapXuatTonAsync(STD_NXT_HRC2_NhapXuatTonSearchRequest request);
         // Task<STD_NXT_HRC2_GetDetailResponse> GetByIdAsync(Guid idPhieu);
         // Task<STD_NXT_HRC2_GetDetailResponse> FilterAsync(DateTime ngaySX, int ca);
@@ -173,6 +175,8 @@ namespace dataproduct.api.Repositories
         Task<bool> PhanBoAsync(STD_NXT_HRC1_PhanBoDto entity);
         Task<bool> ThuHoiPhanBoAsync(STD_NXT_HRC1_PhanBoDto entity);
         Task<bool> KhongPhanBoAsync(STD_NXT_HRC1_KhongPhanBoDto entity);
+        Task<bool> ResetAllAsync(STD_NXT_HRC1_ResetAllDto request);
+        Task<List<string>> GetNegativeThongKePhuLieuAsync(DateTime ngaySX, int ca, string bieuMau);
         Task<List<STD_NXT_HRC1_NhapXuatTonRow>> GetNhapXuatTonAsync(STD_NXT_HRC1_NhapXuatTonSearchRequest request);
     }
     public interface ICtdPhoiNongRepository

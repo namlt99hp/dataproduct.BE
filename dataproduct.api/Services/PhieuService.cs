@@ -19,6 +19,7 @@ namespace dataproduct.api.Business
     {
         private readonly IPhieuRepository _repo;
         private readonly ISTD_NXT_HRC2Repository _std_nxt_hrc2Repo;
+        private readonly ISTD_NXT_HRC1Repository _std_nxt_hrc1Repo;
         private readonly IBMPheDuyetRepository _pheDuyetRepo;
         private readonly BmPheDuyetService _pheDuyetService;
         private readonly ProductFormContext _context;
@@ -33,6 +34,7 @@ namespace dataproduct.api.Business
         public PhieuService(
             IPhieuRepository repo,
             ISTD_NXT_HRC2Repository std_nxt_hrc2Repo,
+            ISTD_NXT_HRC1Repository std_nxt_hrc1Repo,
             IBMPheDuyetRepository pheDuyetRepo,
             BmPheDuyetService pheDuyetService,
             ProductFormContext context,
@@ -46,6 +48,7 @@ namespace dataproduct.api.Business
         {
             _repo = repo;
             _std_nxt_hrc2Repo = std_nxt_hrc2Repo;
+            _std_nxt_hrc1Repo = std_nxt_hrc1Repo;
             _pheDuyetRepo = pheDuyetRepo;
             _pheDuyetService = pheDuyetService;
             _context = context;
@@ -574,7 +577,10 @@ namespace dataproduct.api.Business
             //}
 
             if (status == 5)
+            {
+                await ValidateNoNegativeThongKeIfApplicableAsync(existing);
                 await CaptureExcelHeaderSnapshotIfApplicableAsync(existing);
+            }
 
             existing.TinhTrang = status;
             await _repo.UpdateAsync(existing);
@@ -591,6 +597,53 @@ namespace dataproduct.api.Business
                 { "HRC2_BB_NauLuyen_LF", "LF" },
                 { "HRC2_BB_NauLuyen_RH", "RH" },
             };
+
+        /// <summary>MaBm → bieuMau ngắn (BOF/LF) — 2 biểu mẫu Tiêu Hao HRC1 (Lò thổi/Tinh luyện LF) áp
+        /// dụng cùng cơ chế chặn Chốt khi "Thống kê" âm (xem ValidateNoNegativeThongKeIfApplicableAsync).</summary>
+        private static readonly Dictionary<string, string> HRC1_TieuHao_MaBm_To_BieuMau =
+            new(StringComparer.OrdinalIgnoreCase)
+            {
+                { "HRC1_BB_TieuHao_BOF", "BOF" },
+                { "HRC1_BB_TieuHao_LF", "LF" },
+            };
+
+        /// <summary>
+        /// Chặn "Chốt" (TinhTrang=5) các biểu mẫu Tiêu Hao Nấu Luyện (HRC2: BOF/LF/RH, HRC1: BOF/LF) nếu
+        /// "Thống kê" (KLTK_BOF/LF/RH trên STD_NXT_TOTAL_HRC1/HRC2 — tổng phụ liệu thực tế + phân bổ, cùng
+        /// công thức trang Thống kê Tiêu hao) của BẤT KỲ phụ liệu nào đang ÂM cho đúng công đoạn + Ngày/Ca
+        /// của phiếu này. Nguyên nhân: cột Chênh lệch ở Sổ Xuất-Nhập-Tồn giờ được PHÉP phân bổ âm (xem
+        /// SummaryTableSTD.tsx/SummaryTableSTD_HRC1.tsx) — nếu phân bổ âm vượt quá lượng phụ liệu thực tế
+        /// đã dùng, số liệu thống kê báo cáo sẽ sai (âm), nên không cho chốt phiếu chi tiết trong trường
+        /// hợp này. Enforce lại ở BE (ngoài preConfirmCheck ở FE) để không bị bỏ qua nếu gọi API trực tiếp.
+        /// </summary>
+        private async Task ValidateNoNegativeThongKeIfApplicableAsync(BmPhieu phieu)
+        {
+            if (phieu?.MaBm == null || phieu.NgaySX == null || phieu.Ca == null) return;
+
+            string bieuMau;
+            List<string> negativePhuLieus;
+            if (HRC2_TieuHao_MaBm_To_BieuMau.TryGetValue(phieu.MaBm, out bieuMau!))
+            {
+                negativePhuLieus = await _std_nxt_hrc2Repo.GetNegativeThongKePhuLieuAsync(
+                    phieu.NgaySX.Value.ToDateTime(TimeOnly.MinValue), phieu.Ca.Value, bieuMau);
+            }
+            else if (HRC1_TieuHao_MaBm_To_BieuMau.TryGetValue(phieu.MaBm, out bieuMau!))
+            {
+                negativePhuLieus = await _std_nxt_hrc1Repo.GetNegativeThongKePhuLieuAsync(
+                    phieu.NgaySX.Value.ToDateTime(TimeOnly.MinValue), phieu.Ca.Value, bieuMau);
+            }
+            else
+            {
+                return;
+            }
+
+            if (negativePhuLieus.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    $"Không thể chốt phiếu: Thống kê phụ liệu {string.Join(", ", negativePhuLieus)} đang âm " +
+                    "(phân bổ chênh lệch âm vượt quá lượng thực tế đã dùng). Vui lòng kiểm tra lại trước khi chốt.");
+            }
+        }
 
         /// <summary>
         /// Đúng lúc phiếu chuyển sang trạng thái Chốt (TinhTrang=5): chụp lại TOÀN BỘ danh sách cột
@@ -673,7 +726,10 @@ namespace dataproduct.api.Business
             foreach (var phieu in phieus)
             {
                 if (status == 5)
+                {
+                    await ValidateNoNegativeThongKeIfApplicableAsync(phieu);
                     await CaptureExcelHeaderSnapshotIfApplicableAsync(phieu);
+                }
 
                 phieu.TinhTrang = status;
                 await _repo.UpdateAsync(phieu);

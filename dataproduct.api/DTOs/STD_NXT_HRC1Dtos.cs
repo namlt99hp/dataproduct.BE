@@ -106,6 +106,28 @@ namespace dataproduct.api.DTOs
         public int Ca { get; set; }
     }
 
+    /// <summary>
+    /// 1 phụ liệu cần reset trong "Reset tất cả" — IsPhanBo cho biết trạng thái hiện tại
+    /// (true = đã phân bổ -> cần thu hồi, false = không phân bổ -> cần hủy "Không PB"). Mirror HRC2.
+    /// </summary>
+    public class STD_NXT_HRC1_ResetAllItemDto
+    {
+        public int PhuLieuID { get; set; }
+        public bool IsPhanBo { get; set; }
+    }
+
+    /// <summary>
+    /// Payload gộp reset tất cả phụ liệu của 1 phiếu trong 1 request — thay cho việc FE gọi
+    /// song song N request thu-hoi-phan-bo/khong-phan-bo (gây tranh lock/transient failure trên SQL Server).
+    /// </summary>
+    public class STD_NXT_HRC1_ResetAllDto
+    {
+        public Guid IdPhieu { get; set; }
+        public DateTime NgaySX { get; set; }
+        public int Ca { get; set; }
+        public List<STD_NXT_HRC1_ResetAllItemDto> Items { get; set; } = new();
+    }
+
     public class STD_NXT_HRC1_NhapXuatTonSearchRequest
     {
         public DateTime TuNgay { get; set; }

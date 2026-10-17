@@ -1002,60 +1002,67 @@ namespace dataproduct.api.Repositories
             }
         }
 
+        /// <summary>
+        /// Phần thân thực hiện thu hồi phân bổ cho 1 phụ liệu — không gọi CheckPhieuChotAsync/SaveChangesAsync
+        /// để ThuHoiPhanBoAsync (1 dòng) và ResetAllAsync (N dòng, 1 transaction) có thể tái dùng chung.
+        /// </summary>
+        private async Task ThuHoiPhanBoCoreAsync(Guid idPhieu, DateTime ngaySX, int ca, int phuLieuID)
+        {
+            var totalRow = await _context.STD_NXT_TOTAL_HRC1s
+                .FirstOrDefaultAsync(x =>
+                    x.PhuLieuID == phuLieuID &&
+                    x.NgaySX == ngaySX &&
+                    x.Ca == ca &&
+                    x.Id_Phieu == idPhieu);
+
+            if (totalRow == null)
+            {
+                throw new Exception("Không tìm thấy dữ liệu tổng hợp để thu hồi phân bổ. Vui lòng lưu trước.");
+            }
+
+            if (totalRow.HasPhanBo != true)
+            {
+                throw new Exception("Dòng này chưa được phân bổ hoặc đã thu hồi trước đó.");
+            }
+
+            var ngaySXDate = DateOnly.FromDateTime(ngaySX);
+            var caByte = (byte)ca;
+
+            // Loại dòng thuộc phiếu đã khóa (mirror GetAllAsync) để chỉ thu hồi đúng dòng đang hoạt động.
+            var phanBoRecords = await (
+                from pl in _context.Hrc1PhuLieus
+                join tieuHao in _context.Hrc1TieuHaos on pl.MeID equals tieuHao.ID
+                where pl.PhuLieuID == phuLieuID &&
+                      pl.IsPhanBo == true &&
+                      tieuHao.NgaySanXuat == ngaySXDate &&
+                      tieuHao.Ca == caByte &&
+                      tieuHao.IsDeleted == false &&
+                      (tieuHao.IDPhieu == null ||
+                          _context.BmPhieus.Any(p => p.Idphieu == tieuHao.IDPhieu && p.IsLock != 1 && p.IsDelete != 1))
+                select pl
+            ).ToListAsync();
+
+            if (phanBoRecords.Any())
+            {
+                _context.Hrc1PhuLieus.RemoveRange(phanBoRecords);
+            }
+
+            totalRow.HasPhanBo = null;
+            totalRow.TyLeBOF = null;
+            totalRow.TyLeLF = null;
+            totalRow.KLPB_BOF = null;
+            totalRow.KLPB_LF = null;
+            // Reset chờ bấm Phân bổ/Không phân bổ lại — không tính toán lại ở đây (theo yêu cầu người dùng).
+            totalRow.KLTK_BOF = null;
+            totalRow.KLTK_LF = null;
+        }
+
         public async Task<bool> ThuHoiPhanBoAsync(STD_NXT_HRC1_PhanBoDto entity)
         {
             try
             {
                 await CheckPhieuChotAsync(entity.NgaySX, entity.Ca);
-
-                var totalRow = await _context.STD_NXT_TOTAL_HRC1s
-                    .FirstOrDefaultAsync(x =>
-                        x.PhuLieuID == entity.PhuLieuID &&
-                        x.NgaySX == entity.NgaySX &&
-                        x.Ca == entity.Ca &&
-                        x.Id_Phieu == entity.IdPhieu);
-
-                if (totalRow == null)
-                {
-                    throw new Exception("Không tìm thấy dữ liệu tổng hợp để thu hồi phân bổ. Vui lòng lưu trước.");
-                }
-
-                if (totalRow.HasPhanBo != true)
-                {
-                    throw new Exception("Dòng này chưa được phân bổ hoặc đã thu hồi trước đó.");
-                }
-
-                var ngaySXDate = DateOnly.FromDateTime(entity.NgaySX);
-                var caByte = (byte)entity.Ca;
-
-                // Loại dòng thuộc phiếu đã khóa (mirror GetAllAsync) để chỉ thu hồi đúng dòng đang hoạt động.
-                var phanBoRecords = await (
-                    from pl in _context.Hrc1PhuLieus
-                    join tieuHao in _context.Hrc1TieuHaos on pl.MeID equals tieuHao.ID
-                    where pl.PhuLieuID == entity.PhuLieuID &&
-                          pl.IsPhanBo == true &&
-                          tieuHao.NgaySanXuat == ngaySXDate &&
-                          tieuHao.Ca == caByte &&
-                          tieuHao.IsDeleted == false &&
-                          (tieuHao.IDPhieu == null ||
-                              _context.BmPhieus.Any(p => p.Idphieu == tieuHao.IDPhieu && p.IsLock != 1 && p.IsDelete != 1))
-                    select pl
-                ).ToListAsync();
-
-                if (phanBoRecords.Any())
-                {
-                    _context.Hrc1PhuLieus.RemoveRange(phanBoRecords);
-                }
-
-                totalRow.HasPhanBo = null;
-                totalRow.TyLeBOF = null;
-                totalRow.TyLeLF = null;
-                totalRow.KLPB_BOF = null;
-                totalRow.KLPB_LF = null;
-                // Reset chờ bấm Phân bổ/Không phân bổ lại — không tính toán lại ở đây (theo yêu cầu người dùng).
-                totalRow.KLTK_BOF = null;
-                totalRow.KLTK_LF = null;
-
+                await ThuHoiPhanBoCoreAsync(entity.IdPhieu, entity.NgaySX, entity.Ca, entity.PhuLieuID);
                 await _context.SaveChangesAsync();
                 return true;
             }
@@ -1147,37 +1154,45 @@ namespace dataproduct.api.Repositories
                 .ToList();
         }
 
+        /// <summary>
+        /// Phần thân thực hiện "Không phân bổ" cho 1 phụ liệu — không gọi CheckPhieuChotAsync/SaveChangesAsync,
+        /// mirror ThuHoiPhanBoCoreAsync để KhongPhanBoAsync (1 dòng) và ResetAllAsync (N dòng) tái dùng chung.
+        /// </summary>
+        private async Task KhongPhanBoCoreAsync(Guid idPhieu, int phuLieuID, DateTime ngaySX, int ca)
+        {
+            var totalRow = await _context.STD_NXT_TOTAL_HRC1s
+                .FirstOrDefaultAsync(x =>
+                    x.PhuLieuID == phuLieuID &&
+                    x.Id_Phieu == idPhieu);
+
+            if (totalRow == null)
+            {
+                throw new Exception("Không tìm thấy dữ liệu tổng hợp. Vui lòng lưu trước.");
+            }
+            if (totalRow.HasPhanBo == false)
+            {
+                // Bấm lại lần 2 = hủy quyết định "Không phân bổ" — reset chờ quyết định lại, mirror
+                // ThuHoiPhanBoAsync.
+                totalRow.HasPhanBo = null;
+                totalRow.KLTK_BOF = null;
+                totalRow.KLTK_LF = null;
+            }
+            else
+            {
+                totalRow.HasPhanBo = false;
+                var (klTkBof, klTkLf) = await ComputeKLTKAsync(
+                    DateOnly.FromDateTime(ngaySX), ca, phuLieuID);
+                totalRow.KLTK_BOF = klTkBof;
+                totalRow.KLTK_LF = klTkLf;
+            }
+        }
+
         public async Task<bool> KhongPhanBoAsync(STD_NXT_HRC1_KhongPhanBoDto entity)
         {
             try
             {
                 await CheckPhieuChotAsync(entity.NgaySX, entity.Ca);
-
-                var totalRow = await _context.STD_NXT_TOTAL_HRC1s
-                    .FirstOrDefaultAsync(x =>
-                        x.PhuLieuID == entity.PhuLieuID &&
-                        x.Id_Phieu == entity.IdPhieu);
-
-                if (totalRow == null)
-                {
-                    throw new Exception("Không tìm thấy dữ liệu tổng hợp. Vui lòng lưu trước.");
-                }
-                if (totalRow.HasPhanBo == false)
-                {
-                    // Bấm lại lần 2 = hủy quyết định "Không phân bổ" — reset chờ quyết định lại, mirror
-                    // ThuHoiPhanBoAsync.
-                    totalRow.HasPhanBo = null;
-                    totalRow.KLTK_BOF = null;
-                    totalRow.KLTK_LF = null;
-                }
-                else
-                {
-                    totalRow.HasPhanBo = false;
-                    var (klTkBof, klTkLf) = await ComputeKLTKAsync(
-                        DateOnly.FromDateTime(entity.NgaySX), entity.Ca, entity.PhuLieuID);
-                    totalRow.KLTK_BOF = klTkBof;
-                    totalRow.KLTK_LF = klTkLf;
-                }
+                await KhongPhanBoCoreAsync(entity.IdPhieu, entity.PhuLieuID, entity.NgaySX, entity.Ca);
                 await _context.SaveChangesAsync();
                 return true;
             }
@@ -1185,6 +1200,73 @@ namespace dataproduct.api.Repositories
             {
                 throw new Exception(ex.Message);
             }
+        }
+
+        /// <summary>
+        /// Reset tất cả phụ liệu đã xử lý (đã phân bổ/không phân bổ) của 1 phiếu trong 1 request duy nhất —
+        /// chạy tuần tự trên cùng 1 DbContext + 1 transaction, thay cho việc FE gọi song song N request
+        /// thu-hoi-phan-bo/khong-phan-bo (từng request mở DbContext/transaction riêng, cùng ghi đè
+        /// STD_NXT_TOTAL_HRC1s/Hrc1PhuLieus theo NgaySX+Ca -> tranh lock -> lỗi transient trên SQL Server).
+        /// </summary>
+        public async Task<bool> ResetAllAsync(STD_NXT_HRC1_ResetAllDto request)
+        {
+            if (request.Items == null || request.Items.Count == 0) return true;
+
+            await CheckPhieuChotAsync(request.NgaySX, request.Ca);
+
+            await using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                foreach (var item in request.Items)
+                {
+                    if (item.IsPhanBo)
+                    {
+                        await ThuHoiPhanBoCoreAsync(request.IdPhieu, request.NgaySX, request.Ca, item.PhuLieuID);
+                    }
+                    else
+                    {
+                        await KhongPhanBoCoreAsync(request.IdPhieu, item.PhuLieuID, request.NgaySX, request.Ca);
+                    }
+                }
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                throw new Exception(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Trả về tên các phụ liệu có "Thống kê" (KLTK_BOF/LF — tổng phụ liệu thực tế + phân bổ, cùng
+        /// công thức dùng ở trang Thống kê Tiêu hao) đang ÂM cho đúng công đoạn (bieuMau: BOF/LF) trong
+        /// Ngày/Ca truyền vào. Mirror STD_XNT_HRC2Repository.GetNegativeThongKePhuLieuAsync — dùng để chặn
+        /// "Chốt" phiếu Tiêu hao khi phân bổ chênh lệch âm vượt quá lượng phụ liệu thực tế đã dùng.
+        /// Chỉ các phụ liệu ĐÃ xử lý (Phân bổ/Không PB) mới có KLTK_* (null = chưa xử lý, không thể âm).
+        /// </summary>
+        public async Task<List<string>> GetNegativeThongKePhuLieuAsync(DateTime ngaySX, int ca, string bieuMau)
+        {
+            var rows = await _context.STD_NXT_TOTAL_HRC1s
+                .Where(x => x.NgaySX == ngaySX && x.Ca == ca)
+                .Select(x => new { x.TenNguyenLieu, x.KLTK_BOF, x.KLTK_LF })
+                .ToListAsync();
+
+            Func<decimal?, bool> isNegative = v => v.HasValue && v.Value < 0;
+
+            return rows
+                .Where(x => bieuMau switch
+                {
+                    "BOF" => isNegative(x.KLTK_BOF),
+                    "LF" => isNegative(x.KLTK_LF),
+                    _ => false,
+                })
+                .Select(x => x.TenNguyenLieu ?? "")
+                .Where(ten => ten != "")
+                .Distinct()
+                .ToList();
         }
     }
 }

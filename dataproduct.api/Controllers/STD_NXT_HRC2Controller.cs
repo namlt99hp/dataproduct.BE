@@ -88,6 +88,34 @@ namespace dataproduct.api.Controllers
             }
         }
 
+        [HttpPost("reset-all-phan-bo")]
+        public async Task<IActionResult> ResetAllPhanBo([FromBody] STD_NXT_HRC2_ResetAllDto request)
+        {
+            try
+            {
+                var result = await _service.ResetAllAsync(request);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+            }
+        }
+
+        [HttpPost("check-negative-thongke")]
+        public async Task<IActionResult> CheckNegativeThongKe([FromBody] STD_NXT_CheckNegativeThongKeRequest request)
+        {
+            try
+            {
+                var result = await _service.GetNegativeThongKePhuLieuAsync(request.NgaySX, request.Ca, request.BieuMau);
+                return Ok(new { data = result });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+            }
+        }
+
         [HttpPost("search-nhapxuatton")]
         public async Task<IActionResult> SearchNhapXuatTon([FromBody] STD_NXT_HRC2_NhapXuatTonSearchRequest request)
         {
