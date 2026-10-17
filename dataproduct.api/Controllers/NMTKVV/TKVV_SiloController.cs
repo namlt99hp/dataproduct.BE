@@ -66,6 +66,31 @@ namespace dataproduct.api.Controllers.NMTKVV
             return Ok(result);
         }
 
+        [HttpGet("nvl-silo-mapping/ensure")]
+        public async Task<IActionResult> EnsureMapping(
+            [FromQuery] DateOnly ngaySX,
+            [FromQuery] int ca,
+            [FromQuery] string scope)
+        {
+            if (string.IsNullOrWhiteSpace(scope))
+                return BadRequest(new { message = "Thiếu scope." });
+            var result = await _service.EnsureMappingAsync(ngaySX, ca, scope);
+            return Ok(result.Select(m => new TKVVNvlSiloMappingDto
+            {
+                Id              = m.ID,
+                Ca              = m.Ca,
+                NgaySX          = m.NgaySX,
+                NguyenVatLieuID = m.NguyenVatLieuID,
+                SiloID          = m.SiloID,
+                ThuTu           = m.ThuTu,
+                Scope           = m.Scope,
+                MaBM            = m.MaBM,
+                GhiChu          = m.GhiChu,
+                TrangThai       = m.TrangThai,
+                NgayCapNhat     = m.NgayCapNhat,
+            }));
+        }
+
         [HttpGet("nvl-silo-mapping/nearest")]
         public async Task<IActionResult> GetNearestMapping(
             [FromQuery] string? maBM,

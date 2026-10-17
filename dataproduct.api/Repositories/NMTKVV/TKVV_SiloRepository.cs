@@ -287,6 +287,55 @@ namespace dataproduct.api.Repositories.NMTKVV
             return inserted;
         }
 
+        public async Task<List<TKVV_NVL_SiloMapping>> EnsureMappingAsync(DateOnly ngaySX, int ca, string scope)
+        {
+            var siloIds = await _context.TKVV_Silo
+                .Where(x => x.Scope == scope && x.TrangThai)
+                .Select(x => x.ID)
+                .ToListAsync();
+
+            var existing = await _context.TKVV_NVL_SiloMapping
+                .Where(m => m.SiloID.HasValue && siloIds.Contains(m.SiloID.Value)
+                         && m.Ca == ca && m.NgaySX == ngaySX && m.TrangThai)
+                .ToListAsync();
+
+            if (existing.Count > 0) return existing;
+
+            var historical = await _context.TKVV_NVL_SiloMapping
+                .Where(m => m.SiloID.HasValue && siloIds.Contains(m.SiloID.Value)
+                         && m.NgaySX <= ngaySX && m.TrangThai)
+                .ToListAsync();
+
+            if (historical.Count == 0) return new List<TKVV_NVL_SiloMapping>();
+
+            var nearest = historical
+                .OrderByDescending(m => m.NgaySX)
+                .ThenByDescending(m => m.Ca)
+                .First();
+
+            var toClone = historical
+                .Where(m => m.NgaySX == nearest.NgaySX && m.Ca == nearest.Ca)
+                .ToList();
+
+            var cloned = toClone.Select(src => new TKVV_NVL_SiloMapping
+            {
+                MaBM            = src.MaBM,
+                NguyenVatLieuID = src.NguyenVatLieuID,
+                Scope           = src.Scope,
+                SiloID          = src.SiloID,
+                Ca              = ca,
+                NgaySX          = ngaySX,
+                ThuTu           = src.ThuTu,
+                GhiChu          = src.GhiChu,
+                TrangThai       = true,
+                NgayCapNhat     = DateTime.Now,
+            }).ToList();
+
+            _context.TKVV_NVL_SiloMapping.AddRange(cloned);
+            await _context.SaveChangesAsync();
+            return cloned;
+        }
+
         public async Task<TKVV_NVL_SiloMapping?> GetNvlSiloMappingByIdAsync(int id)
             => await _context.TKVV_NVL_SiloMapping.FindAsync(id);
 
