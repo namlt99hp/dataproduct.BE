@@ -45,7 +45,7 @@ namespace dataproduct.api.Repositories.NMTKVV
             // ── 2. NVL mapping gần nhất cho từng Silo ───────────────────────────────
             var mappingCandidates = await _context.TKVV_NVL_SiloMapping
                 .Where(m => m.SiloID.HasValue && siloIds.Contains(m.SiloID.Value)
-                         && m.Ca == ca && m.NgaySX <= ngaySX && m.TrangThai)
+                         && m.Ca == ca && m.NgaySX == ngaySX && m.TrangThai)
                 .ToListAsync();
             var nvlList = await _context.TKVV_NguyenVatLieu.ToListAsync();
             var nearestMappingBySilo = mappingCandidates
@@ -179,6 +179,9 @@ namespace dataproduct.api.Repositories.NMTKVV
 
                     if (!existingBySilo.TryGetValue(silo.ID, out var siloRecs) || siloRecs.Count == 0)
                     {
+                        // Silo chưa có dữ liệu và không có mapping NVL → bỏ qua, không tạo row trống
+                        if (!effectiveNvlId.HasValue) continue;
+
                         // Chưa có bản ghi — INSERT với dữ liệu khởi tạo (DoAm/DoAmText để trống, nhập tay)
                         var tonCuoi = tonCuoiAuto ?? 0m;
                         var rec = new TKVV_TonSilo
@@ -189,7 +192,7 @@ namespace dataproduct.api.Repositories.NMTKVV
                             Scope = scope,
                             SiloID = silo.ID,
                             NguyenVatLieuID = effectiveNvlId,
-                            ThuTu = silos.IndexOf(silo) + 1,
+                            ThuTu = mapping?.ThuTu ?? silos.IndexOf(silo) + 1,
                             TonDau = carryForward,
                             Nhap = nhapAuto,
                             NhapAuto = nhapAuto,
@@ -206,10 +209,19 @@ namespace dataproduct.api.Repositories.NMTKVV
                     }
                     else
                     {
+                        // Silo có row cũ nhưng không còn mapping → xóa hẳn toàn bộ dòng (kể cả tách liệu)
+                        if (!effectiveNvlId.HasValue)
+                        {
+                            _context.TKVV_TonSilo.RemoveRange(siloRecs);
+                            existingBySilo.Remove(silo.ID);
+                            continue;
+                        }
+
                         // Dòng gốc (ID nhỏ nhất) — cập nhật auto values; DoAm/DoAmText không chạm
                         var rec = siloRecs[0];
-                        // Đồng bộ NVL theo mapping/override hiện tại (có thể đã thay đổi so với ca trước)
+                        // Đồng bộ NVL và ThuTu theo mapping/override hiện tại (có thể đã thay đổi so với ca trước)
                         if (effectiveNvlId.HasValue) rec.NguyenVatLieuID = effectiveNvlId;
+                        if (mapping?.ThuTu.HasValue == true) rec.ThuTu = mapping.ThuTu.Value;
                         var tonCuoi = rec.TonCuoi ?? tonCuoiAuto ?? 0m;
                         var isAdj = tonCuoiAuto.HasValue && tonCuoi != tonCuoiAuto.Value;
                         if (nonFirstNvlSiloIds.Contains(silo.ID))
@@ -256,18 +268,7 @@ namespace dataproduct.api.Repositories.NMTKVV
             {
                 nearestMappingBySilo.TryGetValue(silo.ID, out var mapping);
                 if (!existingBySilo.TryGetValue(silo.ID, out var siloRecs) || siloRecs.Count == 0)
-                {
-                    result.Add(new TKVVTonSiloRowDto
-                    {
-                        SiloID = silo.ID,
-                        MaSilo = silo.MaSilo,
-                        TenSilo = silo.TenSilo,
-                        NgaySX = ngaySX,
-                        Ca = ca,
-                        Scope = scope,
-                    });
                     continue;
-                }
 
                 foreach (var rec in siloRecs)
                 {
@@ -457,14 +458,12 @@ namespace dataproduct.api.Repositories.NMTKVV
         public async Task ResetPhieuAsync(DateOnly ngaySX, int ca, int scope)
         {
             var rows = await _context.TKVV_TonSilo
-                .Where(x => x.NgaySX == ngaySX && x.Ca == ca && x.Scope == scope && !x.IsDelete)
+                .Where(x => x.NgaySX == ngaySX && x.Ca == ca && x.Scope == scope)
                 .ToListAsync();
 
             if (rows.Count == 0) return;
 
-            foreach (var r in rows)
-                r.IsDelete = true;
-
+            _context.TKVV_TonSilo.RemoveRange(rows);
             await _context.SaveChangesAsync();
         }
 

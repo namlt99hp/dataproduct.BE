@@ -117,7 +117,7 @@ namespace dataproduct.api.Repositories.NMTKVV
                            && (ngaySX == null || m.NgaySX == ngaySX)
                            && (ca == null || m.Ca == ca)
                            && m.TrangThai == true
-                        orderby m.NgaySX descending, m.Ca, m.ThuTu, m.NguyenVatLieuID
+                        orderby m.ThuTu, m.NgaySX descending, m.Ca, m.NguyenVatLieuID
                         select new TKVVNvlSiloMappingDto
                         {
                             Id = m.ID,
