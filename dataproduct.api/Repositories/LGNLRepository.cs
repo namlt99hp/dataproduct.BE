@@ -663,6 +663,11 @@ namespace dataproduct.api.Repositories
         // Số phút đọc lùi trước mốc đầu ca để lấy TS0 ngay trước mốc (dùng phân xử mốc giao ca)
         private const int SoPhutDocLuiTruocMoc = 30;
 
+        // Dung sai (giây) hai phía mốc giao ca. Dữ liệu thực tế (01/09-16/10): mẻ cuối ca cũ có thể ghi
+        // trễ tới ~4 phút, mẻ 1 ca mới có thể ghi sớm tới ~3 phút trước mốc. Mẻ cách nhau ~11 phút nên
+        // trong cửa sổ này chỉ có tối đa 1 điểm reset TS0.
+        private const int SoGiayDungSaiMocGiaoCa = 300;
+
         /// <summary>
         private static List<LG1_DuLieuNL> LocBanGhiMocGiaoCa(
             List<LG1_DuLieuNL> duLieuTho, DateTime tuLuc, DateTime denLuc)
@@ -679,18 +684,40 @@ namespace dataproduct.api.Repositories
                 var hienTai = banGhiTS0.FirstOrDefault(bg => bg.Time == gio);
                 if (hienTai == null) return null;
                 var truoc = banGhiTS0.Where(bg => bg.Time < gio).OrderBy(bg => bg.Time).LastOrDefault();
-                return truoc == null || hienTai.Value >= truoc.Value;
+                // Không có mẻ trước (lò dừng quá SoPhutDocLuiTruocMoc phút): mẻ số 1 là mẻ đầu ca mới
+                // (reset), số khác 1 coi là nối tiếp ca cũ.
+                if (truoc == null) return hienTai.Value != 1;
+                return hienTai.Value >= truoc.Value;
             }
 
-            // Đầu ca: chỉ nhận mốc thuộc ca mới (không có TS0 hoặc không có mẻ trước thì không nhận)
-            var giuMocDau = ThuocCaCu(mocDauCa) == false;
-            // Cuối ca: nhận mốc thuộc ca cũ (không có TS0 thì giữ như cách tính cũ)
-            var giuMocCuoi = ThuocCaCu(mocCuoiCa) != false;
+            var cuaSo = TimeSpan.FromSeconds(SoGiayDungSaiMocGiaoCa);
+            var cache = new Dictionary<DateTime, bool?>();
+            bool? PhanXu(DateTime gio)
+            {
+                if (!cache.TryGetValue(gio, out var kq)) cache[gio] = kq = ThuocCaCu(gio);
+                return kq;
+            }
 
-            var ketQua = duLieuTho.Where(bg => bg.Time >= tuLuc && bg.Time < mocCuoiCa).ToList();
-            if (giuMocDau) ketQua.AddRange(duLieuTho.Where(bg => bg.Time == mocDauCa));
-            if (giuMocCuoi) ketQua.AddRange(duLieuTho.Where(bg => bg.Time == mocCuoiCa));
-            return ketQua.OrderBy(bg => bg.Time).ToList();
+            bool Giu(LG1_DuLieuNL bg)
+            {
+                if (bg.Time is not DateTime gio) return false;
+
+                // Quanh mốc giao ca (± dung sai) phân ca theo TS0, không theo giờ: SCADA có thể ghi mẻ cuối
+                // ca cũ trễ vài phút sau mốc, hoặc ghi mẻ 1 của ca mới sớm vài phút trước mốc.
+                // Không có TS0 để phân xử thì dùng giờ: đúng mốc đầu ca thuộc ca cũ, đúng mốc cuối ca thuộc ca cũ.
+
+                // Đầu ca: nhận khi TS0 đã reset (thuộc ca mới)
+                if (gio >= mocDauCa - cuaSo && gio <= mocDauCa + cuaSo)
+                    return PhanXu(gio) is bool cu ? !cu : gio > mocDauCa;
+
+                // Cuối ca: nhận khi TS0 nối tiếp (thuộc ca cũ)
+                if (gio >= mocCuoiCa - cuaSo && gio <= mocCuoiCa + cuaSo)
+                    return PhanXu(gio) is bool cu2 ? cu2 : gio <= mocCuoiCa;
+
+                return gio > mocDauCa && gio < mocCuoiCa;
+            }
+
+            return duLieuTho.Where(Giu).OrderBy(bg => bg.Time).ToList();
         }
 
         public async Task<LGNLDuLieuSiLoResult> GetDuLieuSiloPivotAsync(DateTime ngay, int idCa, int idLoCao)
@@ -820,7 +847,9 @@ namespace dataproduct.api.Repositories
                     g => g.Key,
                     g => g.OrderBy(m => m.ThoiDiemBD ?? DateTime.MinValue)
                           .Select(m => (
-                              From: m.ThoiDiemBD ?? timeFrom,
+                              // Mapping gốc áp dụng cho cả ca, kể cả bản ghi mốc đầu ca (07:30:00 / 19:30:00)
+                              // nằm trước timeFrom 1 giây — nếu dùng timeFrom thì mẻ đầu ca bị mất trọng lượng.
+                              From: m.ThoiDiemBD ?? DateTime.MinValue,
                               DataIndex: m.IDNVL.ToString(),
                               m.IDNVL
                           ))
@@ -839,7 +868,7 @@ namespace dataproduct.api.Repositories
             var rawData = await _context.LG1_DuLieuNL
                 .Where(d => d.ID_LoCao == idLoCao
                          && d.Time >= timeFrom.AddSeconds(-1).AddMinutes(-SoPhutDocLuiTruocMoc)
-                         && d.Time <= timeTo
+                         && d.Time <= timeTo.AddSeconds(SoGiayDungSaiMocGiaoCa)
                          && tagKeys.Contains(d.TagKey!))
                 .OrderBy(d => d.Time)
                 .AsNoTracking()
