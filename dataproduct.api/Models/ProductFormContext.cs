@@ -78,7 +78,7 @@ public partial class ProductFormContext : DbContext
     public virtual DbSet<MacThep> MacTheps { get; set; }
     public virtual DbSet<MayDuc> MayDucs { get; set; }
     public virtual DbSet<MacThep_MayDuc> MacThep_MayDucs { get; set; }
-    public virtual DbSet<NhomPhanLoaiMacThep> NhomPhanLoaiMacTheps {get; set;}
+    public virtual DbSet<NhomPhanLoaiMacThep> NhomPhanLoaiMacTheps { get; set; }
     public virtual DbSet<DonTrongPhoi> DonTrongPhois { get; set; }
 
     // HRC2 Slab
@@ -270,7 +270,7 @@ public partial class ProductFormContext : DbContext
             entity.ToTable("BM_Phieu_ChiTiet");
 
             entity.Property(e => e.Id).HasColumnName("ID");
-            entity.Property(e => e.GiaTri).HasMaxLength(500);
+            entity.Property(e => e.GiaTri).HasMaxLength(1000);
             entity.Property(e => e.PhieuId).HasColumnName("PhieuID");
             entity.Property(e => e.RowId).HasColumnName("RowID");
             entity.Property(e => e.ThongSo).HasMaxLength(20);
