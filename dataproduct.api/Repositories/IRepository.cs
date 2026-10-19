@@ -652,11 +652,11 @@ namespace dataproduct.api.Repositories
     public interface ILC_ThapThanRepository
     {
         // Nhóm tháp than
-        Task<List<LC_TP_ThapThan_NhomThapThan>> GetAllNhomAsync(string? searchKey = null, int? scope = null);
-        Task<LC_TP_ThapThan_NhomThapThan?> GetNhomByIdAsync(int id);
+        Task<List<LC_CumThap>> GetAllNhomAsync(string? searchKey = null, int? scope = null);
+        Task<LC_CumThap?> GetNhomByIdAsync(int id);
         Task<bool> NhomExistsAsync(int id);
-        Task<LC_TP_ThapThan_NhomThapThan> AddNhomAsync(LC_TP_ThapThan_NhomThapThan entity);
-        Task<LC_TP_ThapThan_NhomThapThan?> UpdateNhomAsync(LC_TP_ThapThan_NhomThapThan entity);
+        Task<LC_CumThap> AddNhomAsync(LC_CumThap entity);
+        Task<LC_CumThap?> UpdateNhomAsync(LC_CumThap entity);
         Task<bool> DeleteNhomAsync(int id);
 
         // Phễu

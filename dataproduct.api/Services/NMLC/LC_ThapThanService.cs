@@ -29,21 +29,25 @@ namespace dataproduct.api.Services.NMLC
 
         public async Task<NhomThapThanDto> AddNhomAsync(NhomThapThanSaveDto dto)
         {
-            var entity = await _repo.AddNhomAsync(new LC_TP_ThapThan_NhomThapThan
+            var entity = await _repo.AddNhomAsync(new LC_CumThap
             {
-                TenThapThan = dto.TenThapThan,
-                XuongId = dto.Scope
+                Scope = dto.Scope,
+                Ma = dto.Ma,
+                Ten = dto.Ten,
+                ThuTu = dto.ThuTu
             });
             return ToDto(entity);
         }
 
         public async Task<NhomThapThanDto?> UpdateNhomAsync(int id, NhomThapThanSaveDto dto)
         {
-            var entity = await _repo.UpdateNhomAsync(new LC_TP_ThapThan_NhomThapThan
+            var entity = await _repo.UpdateNhomAsync(new LC_CumThap
             {
                 Id = id,
-                TenThapThan = dto.TenThapThan,
-                XuongId = dto.Scope
+                Scope = dto.Scope,
+                Ma = dto.Ma,
+                Ten = dto.Ten,
+                ThuTu = dto.ThuTu
             });
             return entity == null ? null : ToDto(entity);
         }
@@ -154,16 +158,18 @@ namespace dataproduct.api.Services.NMLC
         // ─── Lookup & mapping ───
 
         private async Task<Dictionary<int, string>> GetTenNhomMapAsync()
-            => (await _repo.GetAllNhomAsync()).ToDictionary(x => x.Id, x => x.TenThapThan);
+            => (await _repo.GetAllNhomAsync()).ToDictionary(x => x.Id, x => x.Ten ?? string.Empty);
 
         private async Task<Dictionary<int, LC_TP_ThapThan_Pheu>> GetPheuMapAsync()
             => (await _repo.GetAllPheuAsync()).ToDictionary(x => x.Id);
 
-        private static NhomThapThanDto ToDto(LC_TP_ThapThan_NhomThapThan e) => new()
+        private static NhomThapThanDto ToDto(LC_CumThap e) => new()
         {
             Id = e.Id,
-            TenThapThan = e.TenThapThan,
-            Scope = e.XuongId
+            Scope = e.Scope,
+            Ma = e.Ma,
+            Ten = e.Ten,
+            ThuTu = e.ThuTu
         };
 
         private static PheuDto ToDto(LC_TP_ThapThan_Pheu e, Dictionary<int, string> tenNhom) => new()

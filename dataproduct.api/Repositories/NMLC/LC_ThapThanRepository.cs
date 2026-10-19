@@ -14,58 +14,62 @@ namespace dataproduct.api.Repositories.NMLC
             _context = context;
         }
 
-        // ─── Nhóm tháp than ───
+        // ─── Cụm tháp (LC_CumThap) ───
 
-        public async Task<List<LC_TP_ThapThan_NhomThapThan>> GetAllNhomAsync(string? searchKey = null, int? scope = null)
+        public async Task<List<LC_CumThap>> GetAllNhomAsync(string? searchKey = null, int? scope = null)
         {
-            var query = _context.LC_TP_ThapThan_NhomThapThan.AsNoTracking().Where(x => !x.IsDelete);
+            var query = _context.LC_CumThap.AsNoTracking().Where(x => !x.IsDelete);
 
             if (!string.IsNullOrWhiteSpace(searchKey))
             {
-                query = query.Where(x => x.TenThapThan.Contains(searchKey));
+                query = query.Where(x => (x.Ten != null && x.Ten.Contains(searchKey))
+                                      || x.Ma.Contains(searchKey));
             }
 
             if (scope.HasValue)
-                query = query.Where(x => x.XuongId == scope.Value);
+                query = query.Where(x => x.Scope == scope.Value);
 
-            return await query.OrderBy(x => x.Id).ToListAsync();
+            return await query.OrderBy(x => x.ThuTu).ThenBy(x => x.Id).ToListAsync();
         }
 
-        public async Task<LC_TP_ThapThan_NhomThapThan?> GetNhomByIdAsync(int id)
+        public async Task<LC_CumThap?> GetNhomByIdAsync(int id)
         {
-            return await _context.LC_TP_ThapThan_NhomThapThan
+            return await _context.LC_CumThap
                 .AsNoTracking()
                 .FirstOrDefaultAsync(x => x.Id == id && !x.IsDelete);
         }
 
         public async Task<bool> NhomExistsAsync(int id)
         {
-            return await _context.LC_TP_ThapThan_NhomThapThan.AnyAsync(x => x.Id == id && !x.IsDelete);
+            return await _context.LC_CumThap.AnyAsync(x => x.Id == id && !x.IsDelete);
         }
 
-        public async Task<LC_TP_ThapThan_NhomThapThan> AddNhomAsync(LC_TP_ThapThan_NhomThapThan entity)
+        public async Task<LC_CumThap> AddNhomAsync(LC_CumThap entity)
         {
             entity.IsDelete = false;
-            _context.LC_TP_ThapThan_NhomThapThan.Add(entity);
+            entity.NgayTao = DateTime.Now;
+            _context.LC_CumThap.Add(entity);
             await _context.SaveChangesAsync();
             return entity;
         }
 
-        public async Task<LC_TP_ThapThan_NhomThapThan?> UpdateNhomAsync(LC_TP_ThapThan_NhomThapThan entity)
+        public async Task<LC_CumThap?> UpdateNhomAsync(LC_CumThap entity)
         {
-            var existing = await _context.LC_TP_ThapThan_NhomThapThan
+            var existing = await _context.LC_CumThap
                 .FirstOrDefaultAsync(x => x.Id == entity.Id && !x.IsDelete);
             if (existing == null) return null;
 
-            existing.TenThapThan = entity.TenThapThan;
-            existing.XuongId = entity.XuongId;
+            existing.Scope = entity.Scope;
+            existing.Ma = entity.Ma;
+            existing.Ten = entity.Ten;
+            existing.ThuTu = entity.ThuTu;
             await _context.SaveChangesAsync();
             return existing;
         }
 
         public async Task<bool> DeleteNhomAsync(int id)
         {
-            var existing = await _context.LC_TP_ThapThan_NhomThapThan
+            var existing = await _context.LC_CumThap
                 .FirstOrDefaultAsync(x => x.Id == id && !x.IsDelete);
             if (existing == null) return false;
 
