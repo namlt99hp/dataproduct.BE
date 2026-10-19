@@ -3,6 +3,7 @@ using dataproduct.api.DTOs.CTD_Dto;
 using dataproduct.api.DTOs.NMLG_Dto;
 using dataproduct.api.Models;
 using dataproduct.api.Models.MasterData;
+using dataproduct.api.Models.NMLC;
 using dataproduct.api.ResponseModels;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
@@ -632,7 +633,7 @@ namespace dataproduct.api.Repositories
         /// (2) Sổ Xuất-Nhập-Tồn (STD_XUAT_NHAP_TON_HRC1/STD_NXT_TOTAL_HRC1 — chi tiết + tổng hợp).</summary>
         Task<string?> GetInUseReasonAsync(int id);
     }
-
+    
     public interface ICanBangNLSourceRepository
     {
         // Gọi external BBGN HTTP API (BM_11/ThongKeSoLieuData), parse kip→Ca, trả rows mang klBG/klQuyKhoBG
@@ -645,5 +646,36 @@ namespace dataproduct.api.Repositories
         // ca=null: gọi cả ca1+ca2; idLoCao=null: gọi tất cả lò trong src.LoCaoList
         Task<List<CanBangNLSourceRow>> ExecLgnlSiloAsync(
             DateTime ngay, int? ca, int? idLoCao, CanBangNLSourceConfig src, List<int> nhomNVLIds);
+    }
+  
+    // ─── LC Tháp than ───
+    public interface ILC_ThapThanRepository
+    {
+        // Nhóm tháp than
+        Task<List<LC_TP_ThapThan_NhomThapThan>> GetAllNhomAsync(string? searchKey = null, int? scope = null);
+        Task<LC_TP_ThapThan_NhomThapThan?> GetNhomByIdAsync(int id);
+        Task<bool> NhomExistsAsync(int id);
+        Task<LC_TP_ThapThan_NhomThapThan> AddNhomAsync(LC_TP_ThapThan_NhomThapThan entity);
+        Task<LC_TP_ThapThan_NhomThapThan?> UpdateNhomAsync(LC_TP_ThapThan_NhomThapThan entity);
+        Task<bool> DeleteNhomAsync(int id);
+
+        // Phễu
+        Task<List<LC_TP_ThapThan_Pheu>> GetAllPheuAsync(int? thapThanId = null, string? searchKey = null);
+        Task<LC_TP_ThapThan_Pheu?> GetPheuByIdAsync(int id);
+        Task<bool> PheuExistsAsync(int id);
+        Task<LC_TP_ThapThan_Pheu> AddPheuAsync(LC_TP_ThapThan_Pheu entity);
+        Task<LC_TP_ThapThan_Pheu?> UpdatePheuAsync(LC_TP_ThapThan_Pheu entity);
+        Task<bool> DeletePheuAsync(int id);
+
+        // Chi tiết
+        Task<List<LC_TP_ThapThan_ChiTiet>> GetChiTietAsync(DateTime? ngaySx = null, int? ca = null, int? pheuId = null);
+        Task<LC_TP_ThapThan_ChiTiet?> GetChiTietByIdAsync(int id);
+        Task<LC_TP_ThapThan_ChiTiet> AddChiTietAsync(LC_TP_ThapThan_ChiTiet entity);
+        Task<List<LC_TP_ThapThan_ChiTiet>> AddRangeChiTietAsync(IEnumerable<LC_TP_ThapThan_ChiTiet> entities);
+        Task<LC_TP_ThapThan_ChiTiet?> UpdateChiTietAsync(LC_TP_ThapThan_ChiTiet entity);
+        Task<bool> DeleteChiTietAsync(int id);
+        // Thay toàn bộ chi tiết của một ngày + ca (dùng khi lưu phiếu)
+        Task<List<LC_TP_ThapThan_ChiTiet>> ReplaceChiTietByNgayCaAsync(
+            DateTime ngaySx, int ca, IEnumerable<LC_TP_ThapThan_ChiTiet> entities);
     }
 }

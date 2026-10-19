@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
+using dataproduct.api.Models.NMLC;
 using dataproduct.api.ResponseModels;
 using Microsoft.EntityFrameworkCore;
 
@@ -102,6 +103,11 @@ public partial class ProductFormContext : DbContext
     //    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     //#warning To protect potentially sensitive information in your connection string, you should move it out of source code. You can avoid scaffolding the connection string by using the Name= syntax to read it from configuration - see https://go.microsoft.com/fwlink/?linkid=2131148. For more guidance on storing connection strings, see https://go.microsoft.com/fwlink/?LinkId=723263.
     //        => optionsBuilder.UseSqlServer("Server=192.168.240.3,1433;Database=PRODUCT_FORM;User Id=sa;Password=HPDQ@1234;TrustServerCertificate=True;");
+
+
+    /// <summary>
+    /// NMLG
+    /// </summary>
     public virtual DbSet<LG_NL_SiLo> LG_NL_SiLo { get; set; }
     public virtual DbSet<LG_NL_Mapping> LG_NL_Mapping { get; set; }
     public virtual DbSet<LG_NL_NVL> LG_NL_NVL { get; set; }
@@ -139,6 +145,10 @@ public partial class ProductFormContext : DbContext
 
     // NM.NL — kết quả SP, không có PK
     public DbSet<CanBangTaiRow> CanBangTaiRows => Set<CanBangTaiRow>();
+    // NM.LC
+    public virtual DbSet<LC_TP_ThapThan_NhomThapThan> LC_TP_ThapThan_NhomThapThan { get; set; }
+    public virtual DbSet<LC_TP_ThapThan_Pheu> LC_TP_ThapThan_Pheu { get; set; }
+    public virtual DbSet<LC_TP_ThapThan_ChiTiet> LC_TP_ThapThan_ChiTiet { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
