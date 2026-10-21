@@ -10,7 +10,6 @@
     <PackageReference Include="ClosedXML" Version="0.105.0" />
     <PackageReference Include="DinkToPdf" Version="1.0.8" />
     <PackageReference Include="libwkhtmltox-64" Version="1.0.0" />
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.20" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.11" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.20">
       <PrivateAssets>all</PrivateAssets>
@@ -28,8 +27,6 @@
 
   <ItemGroup>
     <Folder Include="Data\" />
-    <Folder Include="DTOs\NMLC\" />
-    <Folder Include="Repositories\NMLC\" />
   </ItemGroup>
 
 </Project>
