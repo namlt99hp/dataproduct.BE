@@ -9,15 +9,18 @@ namespace dataproduct.api.Repositories.NMTKVV
         private readonly ProductFormContext _context;
         private readonly ITKVV_BCSL_ChiPhiRepository _bcslRepo;
         private readonly ITKVV_NvlBbgnMappingRepository _nvlBbgnRepo;
+        private readonly ITKVV_SiloRepository _siloRepo;
 
         public TKVV_TonSiloRepository(
             ProductFormContext context,
             ITKVV_BCSL_ChiPhiRepository bcslRepo,
-            ITKVV_NvlBbgnMappingRepository nvlBbgnRepo)
+            ITKVV_NvlBbgnMappingRepository nvlBbgnRepo,
+            ITKVV_SiloRepository siloRepo)
         {
             _context = context;
             _bcslRepo = bcslRepo;
             _nvlBbgnRepo = nvlBbgnRepo;
+            _siloRepo = siloRepo;
         }
 
         // Silo.MaSilo là string ("1".."21") — sắp xếp numeric-aware để khớp đúng thứ tự
@@ -42,15 +45,13 @@ namespace dataproduct.api.Repositories.NMTKVV
                 .ToList();
             var siloIds = silos.Select(s => s.ID).ToList();
 
-            // ── 2. NVL mapping gần nhất cho từng Silo ───────────────────────────────
-            var mappingCandidates = await _context.TKVV_NVL_SiloMapping
-                .Where(m => m.SiloID.HasValue && siloIds.Contains(m.SiloID.Value)
-                         && m.Ca == ca && m.NgaySX <= ngaySX && m.TrangThai)
-                .ToListAsync();
+            // ── 2. NVL mapping cho (ngaySX, ca) — auto-clone nếu chưa có ────────────
+            var mappingCandidates = await _siloRepo.EnsureMappingAsync(ngaySX, ca, scopeStr);
             var nvlList = await _context.TKVV_NguyenVatLieu.ToListAsync();
             var nearestMappingBySilo = mappingCandidates
+                .Where(m => m.SiloID.HasValue)
                 .GroupBy(m => m.SiloID!.Value)
-                .ToDictionary(g => g.Key, g => g.OrderByDescending(m => m.NgaySX).First());
+                .ToDictionary(g => g.Key, g => g.OrderBy(m => m.ThuTu ?? int.MaxValue).First());
 
             // ── 3. Tồn đầu carry-forward: TonCuoi của kíp gần nhất TRƯỚC kíp này ──
             var tonSiloCandidates = await _context.TKVV_TonSilo
@@ -106,16 +107,14 @@ namespace dataproduct.api.Repositories.NMTKVV
 
             // ── 4b. NhapAuto từ sp_TKVV_Get_NVL_BBGN (theo NVL, không theo Silo) ──
             // DoAm/DoAmText không lấy từ BBGN — chỉ cho nhập tay trên giao diện.
+            // Chỉ tính NhapAuto cho silo có trong mapping hiện tại (nhất quán với step 6).
             var siloIdsByNvl = new Dictionary<int, List<int>>();
             foreach (var silo in silos)
             {
-                int effectiveNvlId;
-                if (nvlOverrideBySilo.TryGetValue(silo.ID, out var ov))
-                    effectiveNvlId = ov;
-                else if (nearestMappingBySilo.TryGetValue(silo.ID, out var m) && m.NguyenVatLieuID > 0)
-                    effectiveNvlId = m.NguyenVatLieuID;
-                else
+                if (!nearestMappingBySilo.TryGetValue(silo.ID, out var mapEntry4b) || mapEntry4b.NguyenVatLieuID <= 0)
                     continue;
+                var effectiveNvlId = nvlOverrideBySilo.TryGetValue(silo.ID, out var ov)
+                    ? ov : mapEntry4b.NguyenVatLieuID;
                 if (!siloIdsByNvl.TryGetValue(effectiveNvlId, out var list))
                     siloIdsByNvl[effectiveNvlId] = list = new List<int>();
                 list.Add(silo.ID);
@@ -161,9 +160,15 @@ namespace dataproduct.api.Repositories.NMTKVV
                     lastTonCuoiBySilo.TryGetValue(silo.ID, out var carryForward);
                     decimal? tonCuoiAuto = tonCuoiAutoBySilo.TryGetValue(silo.ID, out var av) ? av : null;
                     nearestMappingBySilo.TryGetValue(silo.ID, out var mapping);
-                    var effectiveNvlId = nvlOverrideBySilo.TryGetValue(silo.ID, out var ovNvl)
-                        ? (int?)ovNvl
-                        : mapping?.NguyenVatLieuID;
+                    var hasMapping = mapping != null && mapping.NguyenVatLieuID > 0;
+
+                    // Không có mapping VÀ không có row cũ → bỏ qua hoàn toàn (không INSERT)
+                    if (!hasMapping && !existingBySilo.ContainsKey(silo.ID)) continue;
+
+                    // nvlOverrideBySilo chỉ là NVL thay thế cho silo đã có mapping
+                    int? effectiveNvlId = hasMapping
+                        ? (nvlOverrideBySilo.TryGetValue(silo.ID, out var ovNvl) ? (int?)ovNvl : mapping!.NguyenVatLieuID)
+                        : (int?)null;
 
                     decimal? nhapAuto = nhapAutoBySilo.TryGetValue(silo.ID, out var na) ? na : null;
                     decimal? xuatAuto = xuatAutoBySilo.TryGetValue(silo.ID, out var xa) ? xa : null;
@@ -180,7 +185,7 @@ namespace dataproduct.api.Repositories.NMTKVV
                             Scope = scope,
                             SiloID = silo.ID,
                             NguyenVatLieuID = effectiveNvlId,
-                            ThuTu = silos.IndexOf(silo) + 1,
+                            ThuTu = mapping?.ThuTu ?? silos.IndexOf(silo) + 1,
                             TonDau = carryForward,
                             Nhap = nhapAuto,
                             NhapAuto = nhapAuto,
@@ -197,8 +202,19 @@ namespace dataproduct.api.Repositories.NMTKVV
                     }
                     else
                     {
+                        // Silo có row cũ nhưng không còn mapping → xóa hẳn toàn bộ dòng (kể cả tách liệu)
+                        if (!effectiveNvlId.HasValue)
+                        {
+                            _context.TKVV_TonSilo.RemoveRange(siloRecs);
+                            existingBySilo.Remove(silo.ID);
+                            continue;
+                        }
+
                         // Dòng gốc (ID nhỏ nhất) — cập nhật auto values; DoAm/DoAmText không chạm
                         var rec = siloRecs[0];
+                        // Đồng bộ NVL và ThuTu theo mapping/override hiện tại (có thể đã thay đổi so với ca trước)
+                        if (effectiveNvlId.HasValue) rec.NguyenVatLieuID = effectiveNvlId;
+                        if (mapping?.ThuTu.HasValue == true) rec.ThuTu = mapping.ThuTu.Value;
                         var tonCuoi = rec.TonCuoi ?? tonCuoiAuto ?? 0m;
                         var isAdj = tonCuoiAuto.HasValue && tonCuoi != tonCuoiAuto.Value;
                         if (nonFirstNvlSiloIds.Contains(silo.ID))
@@ -245,18 +261,7 @@ namespace dataproduct.api.Repositories.NMTKVV
             {
                 nearestMappingBySilo.TryGetValue(silo.ID, out var mapping);
                 if (!existingBySilo.TryGetValue(silo.ID, out var siloRecs) || siloRecs.Count == 0)
-                {
-                    result.Add(new TKVVTonSiloRowDto
-                    {
-                        SiloID = silo.ID,
-                        MaSilo = silo.MaSilo,
-                        TenSilo = silo.TenSilo,
-                        NgaySX = ngaySX,
-                        Ca = ca,
-                        Scope = scope,
-                    });
                     continue;
-                }
 
                 foreach (var rec in siloRecs)
                 {
@@ -293,7 +298,7 @@ namespace dataproduct.api.Repositories.NMTKVV
                     });
                 }
             }
-            return result;
+            return result.OrderBy(r => r.ThuTu ?? int.MaxValue).ThenBy(r => r.Id).ToList();
         }
 
 
@@ -446,14 +451,12 @@ namespace dataproduct.api.Repositories.NMTKVV
         public async Task ResetPhieuAsync(DateOnly ngaySX, int ca, int scope)
         {
             var rows = await _context.TKVV_TonSilo
-                .Where(x => x.NgaySX == ngaySX && x.Ca == ca && x.Scope == scope && !x.IsDelete)
+                .Where(x => x.NgaySX == ngaySX && x.Ca == ca && x.Scope == scope)
                 .ToListAsync();
 
             if (rows.Count == 0) return;
 
-            foreach (var r in rows)
-                r.IsDelete = true;
-
+            _context.TKVV_TonSilo.RemoveRange(rows);
             await _context.SaveChangesAsync();
         }
 

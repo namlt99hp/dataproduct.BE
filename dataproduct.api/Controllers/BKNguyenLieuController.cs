@@ -46,5 +46,9 @@ namespace dataproduct.api.Controllers
             var ok = await _service.DeleteAsync(id);
             return ok ? NoContent() : NotFound();
         }
+
+        [HttpGet("can-bang-tai")]
+        public async Task<IActionResult> GetCanBangTai([FromQuery] DateOnly? NgaySX)
+            => Ok(await _service.GetCanBangTaiAsync(NgaySX ?? DateOnly.FromDateTime(DateTime.Today)));
     }
 }

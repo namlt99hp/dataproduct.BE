@@ -73,6 +73,9 @@ namespace dataproduct.api.Services.NMTKVV
         public Task<int> BatchCreateNvlSiloMappingAsync(BatchCreateNvlSiloMappingDto dto)
             => _repo.BatchCreateNvlSiloMappingAsync(dto);
 
+        public Task<List<TKVV_NVL_SiloMapping>> EnsureMappingAsync(DateOnly ngaySX, int ca, string scope)
+            => _repo.EnsureMappingAsync(ngaySX, ca, scope);
+
         public Task<TKVV_NVL_SiloMapping?> GetNvlSiloMappingByIdAsync(int id)
             => _repo.GetNvlSiloMappingByIdAsync(id);
 

@@ -1,5 +1,6 @@
 ﻿using dataproduct.api.Models;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
 namespace dataproduct.api.Repositories
@@ -59,6 +60,15 @@ namespace dataproduct.api.Repositories
         public async Task<bool> ExistsAsync(int id)
         {
             return await _context.BkPhoiThep.AnyAsync(e => e.Id == id);
+        }
+
+        public async Task<List<CanBangTaiRow>> GetCanBangTaiAsync(DateOnly ngaySX)
+        {
+            var param = new SqlParameter("@NgaySX", ngaySX.ToDateTime(TimeOnly.MinValue).Date);
+            return await _context.CanBangTaiRows
+                .FromSqlRaw("EXEC [dbo].[sp_Get_NMNL_CanBangTai] @NgaySX", param)
+                .AsNoTracking()
+                .ToListAsync();
         }
     }
 }

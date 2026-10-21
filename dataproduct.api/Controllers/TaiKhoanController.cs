@@ -1,9 +1,13 @@
 using dataproduct.api.Models;
 using dataproduct.api.Models.MasterData;
 using dataproduct.api.Utils;
-using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
 
 namespace dataproduct.api.Controllers
 {
@@ -13,11 +17,13 @@ namespace dataproduct.api.Controllers
     {
         private readonly ProductDataMasterDbContext _context;
         private readonly ProductFormContext _formContext;
+        private readonly IConfiguration _config;
 
-        public TaiKhoanController(ProductDataMasterDbContext context, ProductFormContext formContext)
+        public TaiKhoanController(ProductDataMasterDbContext context, ProductFormContext formContext, IConfiguration config)
         {
             _context = context;
             _formContext = formContext;
+            _config = config;
         }
 
         [HttpGet("nguoiky")]
@@ -60,13 +66,13 @@ namespace dataproduct.api.Controllers
             return Ok(list);
         }
 
+        [AllowAnonymous]
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
             if (string.IsNullOrEmpty(request.username) || string.IsNullOrEmpty(request.password))
                 return BadRequest(new { message = "Thiếu tên tài khoản hoặc mật khẩu" });
 
-            // 🔒 Mã hóa mật khẩu bằng MD5
             string hashedPassword = SecurityHelper.ToMD5(request.password);
 
             var user = await _context.Tbl_TaiKhoan
@@ -78,13 +84,34 @@ namespace dataproduct.api.Controllers
             if (user == null)
                 return Unauthorized(new { message = "Sai tài khoản hoặc mật khẩu" });
 
-            // Lưu session (nếu dùng session trên server)
-            //HttpContext.Session.SetString("UserID", user.ID_TaiKhoan.ToString());
-            //HttpContext.Session.SetString("UserName", user.HoVaTen ?? "");
-            //HttpContext.Session.SetString("PhongBan", user.PhongBan?.TenPhongBan ?? "");
-            //HttpContext.Session.SetString("Xuong", user.Xuong_API ?? "");
-            var result = new
+            // Tạo JWT
+            var expiryHours = double.Parse(_config["Jwt:ExpiryHours"]!);
+            var expiresAt   = DateTime.UtcNow.AddHours(expiryHours);
+            var key         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Secret"]!));
+            var creds       = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+            var claims = new[]
             {
+                new Claim(JwtRegisteredClaimNames.Sub, user.TenTaiKhoan),
+                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+                new Claim("userId",   user.ID_TaiKhoan.ToString()),
+                new Claim("username", user.TenTaiKhoan),
+            };
+
+            var jwtToken = new JwtSecurityToken(
+                issuer:            _config["Jwt:Issuer"],
+                audience:          _config["Jwt:Audience"],
+                claims:            claims,
+                expires:           expiresAt,
+                signingCredentials: creds
+            );
+
+            var tokenString = new JwtSecurityTokenHandler().WriteToken(jwtToken);
+
+            return Ok(new
+            {
+                token      = tokenString,
+                expiresAt  = expiresAt,
                 user.ID_TaiKhoan,
                 user.TenTaiKhoan,
                 user.HoVaTen,
@@ -96,9 +123,7 @@ namespace dataproduct.api.Controllers
                 user.Xuong_API,
                 TenPhongBan = user.PhongBan?.TenPhongBan,
                 user.ID_Quyen,
-            };
-
-            return Ok(result);
+            });
         }
         [HttpGet("me")]
         public async Task<IActionResult> Me()

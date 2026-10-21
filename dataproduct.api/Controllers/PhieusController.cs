@@ -1,6 +1,7 @@
 using dataproduct.api.Business;
 using dataproduct.api.DTOs;
 using dataproduct.api.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
 
@@ -46,6 +47,7 @@ namespace dataproduct.api.Controllers
             }
         }
 
+        [AllowAnonymous]
         [HttpPost("auto-create-phieu")]
         public async Task<ActionResult<BmPhieu>> AutoCreatePhieu([FromBody] JsonElement formData)
         {
@@ -137,6 +139,7 @@ namespace dataproduct.api.Controllers
             }
         }
 
+        [AllowAnonymous]
         [HttpGet("exist")]
         public async Task<IActionResult> CheckExistSoPhieu([FromQuery] string maBm,
         [FromQuery] DateOnly ngaySX,

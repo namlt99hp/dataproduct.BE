@@ -449,6 +449,76 @@ namespace dataproduct.api.Services
         }
 
         // -------------------------------------------------------
+        // LÒ THỔI — Chuyển ca Đúc cho mẻ lên thẳng (routing sang phiếu Đúc ca trước/sau).
+        // Mẻ lên thẳng không qua tinh luyện nên không có NgayNhanTL/CaTinhLuyen — khác với
+        // ChuyenCaDucAsync (dùng cho mẻ tinh luyện), baseline ca/ngày hiện tại ở đây phải lấy từ
+        // chính phiếu lò thổi (Ca/NgayTao), đúng theo cách GetMeThepsByMayDucAsync và các query
+        // thống kê khác đang định tuyến mẻ lên thẳng (xem HRC1_BBGNRepository.cs: m.DichChuyen ==
+        // "len_thang" ? m.Ca/m.NgayTao : m.CaTinhLuyen/m.NgayNhanTL).
+        // huong: "truoc" | "sau"
+        // -------------------------------------------------------
+        public async Task ChuyenCaDucLoThoiAsync(int meId, string huong, int userId)
+        {
+            if (huong != "truoc" && huong != "sau")
+                throw new InvalidOperationException("Hướng chuyển ca không hợp lệ.");
+
+            var me = await _repo.GetMeByIdAsync(meId)
+                ?? throw new KeyNotFoundException($"Không tìm thấy mẻ {meId}");
+
+            if (me.DichChuyen != "len_thang")
+                throw new InvalidOperationException("Mẻ không phải lên thẳng, không thể chuyển ca đúc ở lò thổi.");
+            if (me.IsChot == true)
+                throw new InvalidOperationException("Mẻ đã chốt, không thể chuyển ca.");
+            if ((me.TrangThaiDuc ?? 0) >= 1)
+                throw new InvalidOperationException("Máy đúc đã xác nhận mẻ này, không thể chuyển ca.");
+            if (!me.IdMayDucDich.HasValue)
+                throw new InvalidOperationException("Chưa chọn máy đúc đích, không thể chuyển ca.");
+            if (!me.Ca.HasValue)
+                throw new InvalidOperationException("Mẻ chưa xác định được ca lò thổi.");
+
+            var ngayHienTai = me.NgaySXDucChuyen ?? DateOnly.FromDateTime(me.NgayTao);
+            var caHienTai = me.CaDucChuyen ?? me.Ca.Value;
+
+            DateOnly ngayMoi; int caMoi;
+            if (huong == "truoc")
+                (ngayMoi, caMoi) = caHienTai == 1
+                    ? (ngayHienTai.AddDays(-1), 2)
+                    : (ngayHienTai, 1);
+            else
+                (ngayMoi, caMoi) = caHienTai == 2
+                    ? (ngayHienTai.AddDays(1), 1)
+                    : (ngayHienTai, 2);
+
+            // Nếu phiếu đúc ca đích đã tồn tại và đã chốt (TinhTrang=5) thì không cho chuyển vào nữa
+            var phieuDich = await _repo.GetPhieuDucAsync(ngayMoi, caMoi, me.IdMayDucDich.Value);
+            if (phieuDich?.TinhTrang == 5)
+                throw new InvalidOperationException("Phiếu đúc ca đích đã chốt, không thể chuyển mẻ sang ca đó.");
+
+            var kipMoi = await _masterCtx.Tbl_Kip.AsNoTracking()
+                .Where(k => k.NgayLamViec == ngayMoi && k.TenCa == caMoi.ToString())
+                .Select(k => k.TenKip)
+                .FirstOrDefaultAsync();
+
+            var old = Snapshot(me);
+            me.NgaySXDucChuyen = ngayMoi;
+            me.CaDucChuyen = caMoi;
+            me.KipDucChuyen = kipMoi;
+            me.CapNhatBoi = userId;
+            me.CapNhatLuc = DateTime.Now;
+
+            _repo.AddLichSu(new HRC1_LichSu
+            {
+                MeId = me.Id,
+                TaiKhoanId = userId,
+                HanhDong = "chuyen_ca_duc",
+                DuLieuCu = old,
+                DuLieuMoi = Snapshot(me),
+                Luc = DateTime.Now
+            });
+            await _repo.SaveChangesAsync();
+        }
+
+        // -------------------------------------------------------
         // GET — mẻ BBGN thép lỏng (công đoạn đúc) lọc theo khoảng ThoiGian thực tế
         // Lọc phiếu BM_Phieu (MaBm=HRC1_BBGN_ThepLong) có ngày/ca giao với [fromDate,toDate],
         // rồi dùng đúng logic lấy mẻ của GetPhieuAsync (nhánh "duc"): GetMeThepsByMayDucAsync

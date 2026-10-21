@@ -20,6 +20,7 @@ namespace dataproduct.api.Repositories.NMTKVV
         Task<List<TKVVNvlSiloMappingDto>> GetNvlSiloMappingListAsync(string? maBM, string? scope, int? nvlId, int? siloId, DateOnly? ngaySX = null, int? ca = null);
         Task<List<TKVVNvlSiloMappingDto>> GetNearestMappingAsync(string? maBM, string scope, DateOnly beforeDate);
         Task<int> BatchCreateNvlSiloMappingAsync(BatchCreateNvlSiloMappingDto dto);
+        Task<List<TKVV_NVL_SiloMapping>> EnsureMappingAsync(DateOnly ngaySX, int ca, string scope);
         Task<TKVV_NVL_SiloMapping?> GetNvlSiloMappingByIdAsync(int id);
         Task<TKVV_NVL_SiloMapping> AddNvlSiloMappingAsync(TKVV_NVL_SiloMapping entity);
         Task<TKVV_NVL_SiloMapping?> UpdateNvlSiloMappingAsync(int id, TKVV_NVL_SiloMapping entity);

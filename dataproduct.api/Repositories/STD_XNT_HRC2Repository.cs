@@ -698,8 +698,11 @@ namespace dataproduct.api.Repositories
                 }
 
                 // ========== BƯỚC 2: Lấy tất cả mẻ trong DLNM_HRC2 theo ngày/ca ==========
+                // Loại trừ mẻ SP sync chèn vào sau khi phiếu đã gửi duyệt (IsSyncSauGui) — chưa được
+                // xác nhận qua Hiệu chỉnh, không được nhận phân bổ.
                 var dlnmInCa = await _context.DLNM_HRC2s
-                    .Where(x => x.Ngay == entity.NgaySX && x.Ca == entity.Ca && x.IsDelete != true)
+                    .Where(x => x.Ngay == entity.NgaySX && x.Ca == entity.Ca && x.IsDelete != true
+                             && x.IsSyncSauGui != true)
                     .ToListAsync();
 
                 if (!dlnmInCa.Any())

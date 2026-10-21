@@ -1,3 +1,4 @@
+using ClosedXML.Excel;
 using dataproduct.api.DTOs.Export;
 using dataproduct.api.DTOs.NMTKVV_Dto;
 using dataproduct.api.Repositories;
@@ -159,6 +160,162 @@ namespace dataproduct.api.Services.NMTKVV
                 Content = pdfBytes,
                 FileName = fileName,
                 ContentType = "application/pdf",
+            };
+        }
+
+        public async Task<ExportFileResult> ExportTonSiloExcelAsync(Guid idPhieu)
+        {
+            var phieu = await _repoPhieu.GetByIdAsync(idPhieu)
+                ?? throw new Exception("Không tìm thấy phiếu.");
+
+            var rows = (await _repo.GetRowsByPhieuIdAsync(idPhieu))
+                .OrderBy(x => x.ThuTu)
+                .ToList();
+
+            var ngay = phieu.NgaySX ?? DateOnly.FromDateTime(DateTime.Today);
+            var ca = phieu.Ca ?? 0;
+            var caLabel = ca == 1 ? "Ca ngày" : ca == 2 ? "Ca đêm" : $"Ca {ca}";
+            var tenScope = phieu.TenScope
+                ?? (phieu.Scope.HasValue && ScopeCodeMap.TryGetValue(phieu.Scope.Value, out var code) ? code : "");
+
+            var pheDuyets = await _pheDuyetService.GetPheDuyetPhieuAsync(idPhieu);
+            var nguoiGiaoKip = pheDuyets.FirstOrDefault(x => x.CapDuyet == 0);
+            var nguoiNhanKip = pheDuyets.FirstOrDefault(x => x.CapDuyet == 1);
+
+            const int totalCols = 9;
+
+            using var wb = new XLWorkbook();
+            var ws = wb.Worksheets.Add("TonSilo");
+            ws.Style.Font.FontName = "Times New Roman";
+            ws.Style.Font.FontSize = 11;
+            ws.PageSetup.PageOrientation = XLPageOrientation.Landscape;
+            ws.PageSetup.PaperSize = XLPaperSize.A4Paper;
+
+            // ── Header ────────────────────────────────────────────────────────
+            ws.Cell(1, 1).Value = "CÔNG TY CỔ PHẦN THÉP HÒA PHÁT DUNG QUẤT";
+            ws.Cell(1, 1).Style.Font.Bold = true;
+            ws.Cell(1, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            ws.Range(1, 1, 1, totalCols).Merge();
+
+            ws.Cell(2, 1).Value = $"BM.05/QT.05.03     Ngày {ngay:dd}/{ngay:MM}/{ngay:yyyy}     {caLabel}     Xưởng: {tenScope}";
+            ws.Cell(2, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            ws.Range(2, 1, 2, totalCols).Merge();
+
+            ws.Cell(3, 1).Value = "SỔ THEO DÕI XUẤT NHẬP TỒN SILO";
+            ws.Cell(3, 1).Style.Font.Bold = true;
+            ws.Cell(3, 1).Style.Font.FontSize = 14;
+            ws.Cell(3, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            ws.Range(3, 1, 3, totalCols).Merge();
+
+            ws.Cell(4, 1).Value = $"Người giao kíp: {nguoiGiaoKip?.HoVaTen ?? ""}    Chức vụ: {nguoiGiaoKip?.TenViTri ?? ""}    Bộ phận: {nguoiGiaoKip?.TenPhongBan ?? ""}";
+            ws.Range(4, 1, 4, totalCols).Merge();
+
+            ws.Cell(5, 1).Value = $"Người nhận kíp: {nguoiNhanKip?.HoVaTen ?? ""}    Chức vụ: {nguoiNhanKip?.TenViTri ?? ""}    Bộ phận: {nguoiNhanKip?.TenPhongBan ?? ""}";
+            ws.Range(5, 1, 5, totalCols).Merge();
+
+            // ── Tiêu đề cột ───────────────────────────────────────────────────
+            string[] headers = { "STT", "Silo", "Tên Nguyên Liệu", "Độ ẩm %", "Tồn đầu (Tấn)", "Nhập (Tấn)", "Xuất (Tấn)", "Tồn cuối (Tấn)", "Ghi chú" };
+            int headerRow = 6;
+            for (int i = 0; i < headers.Length; i++)
+            {
+                var cell = ws.Cell(headerRow, i + 1);
+                cell.Value = headers[i];
+                cell.Style.Font.Bold = true;
+                cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#dce6f1");
+                cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+                cell.Style.Alignment.WrapText = true;
+            }
+            ws.Range(headerRow, 1, headerRow, totalCols).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            ws.Range(headerRow, 1, headerRow, totalCols).Style.Border.InsideBorder = XLBorderStyleValues.Thin;
+            ws.Row(headerRow).Height = 32;
+
+            // ── Dữ liệu ──────────────────────────────────────────────────────
+            int dataRow = headerRow + 1;
+            int stt = 0;
+            decimal tongTonDau = 0, tongNhap = 0, tongXuat = 0, tongTonCuoi = 0;
+
+            foreach (var r in rows)
+            {
+                stt++;
+                ws.Cell(dataRow, 1).Value = stt;
+                ws.Cell(dataRow, 2).Value = r.MaSilo ?? "";
+                ws.Cell(dataRow, 3).Value = r.TenNVL ?? "";
+                if (r.DoAm.HasValue) ws.Cell(dataRow, 4).Value = (double)r.DoAm.Value;
+                if (r.TonDau.HasValue) ws.Cell(dataRow, 5).Value = (double)r.TonDau.Value;
+                if (r.Nhap.HasValue) ws.Cell(dataRow, 6).Value = (double)r.Nhap.Value;
+                if (r.Xuat.HasValue) ws.Cell(dataRow, 7).Value = (double)r.Xuat.Value;
+                if (r.TonCuoi.HasValue) ws.Cell(dataRow, 8).Value = (double)r.TonCuoi.Value;
+                ws.Cell(dataRow, 9).Value = r.GhiChu ?? "";
+
+                ws.Cell(dataRow, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                ws.Cell(dataRow, 2).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                for (int c = 4; c <= 8; c++)
+                    ws.Cell(dataRow, c).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+                for (int c = 1; c <= totalCols; c++)
+                    ws.Cell(dataRow, c).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+
+                tongTonDau += r.TonDau ?? 0;
+                tongNhap += r.Nhap ?? 0;
+                tongXuat += r.Xuat ?? 0;
+                tongTonCuoi += r.TonCuoi ?? 0;
+                dataRow++;
+            }
+
+            // ── Dòng tổng ─────────────────────────────────────────────────────
+            ws.Cell(dataRow, 1).Value = "Tổng";
+            ws.Range(dataRow, 1, dataRow, 4).Merge();
+            ws.Cell(dataRow, 1).Style.Font.Bold = true;
+            ws.Cell(dataRow, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            ws.Cell(dataRow, 5).Value = (double)tongTonDau;
+            ws.Cell(dataRow, 6).Value = (double)tongNhap;
+            ws.Cell(dataRow, 7).Value = (double)tongXuat;
+            ws.Cell(dataRow, 8).Value = (double)tongTonCuoi;
+            for (int c = 5; c <= 8; c++)
+            {
+                ws.Cell(dataRow, c).Style.Font.Bold = true;
+                ws.Cell(dataRow, c).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+            }
+            for (int c = 1; c <= totalCols; c++)
+                ws.Cell(dataRow, c).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            dataRow += 2;
+
+            // ── Chữ ký ────────────────────────────────────────────────────────
+            ws.Cell(dataRow, 1).Value = "Người giao kíp";
+            ws.Cell(dataRow, 1).Style.Font.Bold = true;
+            ws.Cell(dataRow, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            ws.Range(dataRow, 1, dataRow, 4).Merge();
+            ws.Cell(dataRow, 6).Value = "Người nhận kíp";
+            ws.Cell(dataRow, 6).Style.Font.Bold = true;
+            ws.Cell(dataRow, 6).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            ws.Range(dataRow, 6, dataRow, 9).Merge();
+            dataRow += 3;
+            ws.Cell(dataRow, 1).Value = nguoiGiaoKip?.HoVaTen ?? "";
+            ws.Cell(dataRow, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            ws.Range(dataRow, 1, dataRow, 4).Merge();
+            ws.Cell(dataRow, 6).Value = nguoiNhanKip?.HoVaTen ?? "";
+            ws.Cell(dataRow, 6).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            ws.Range(dataRow, 6, dataRow, 9).Merge();
+
+            // ── Column widths ─────────────────────────────────────────────────
+            ws.Column(1).Width = 6;
+            ws.Column(2).Width = 8;
+            ws.Column(3).Width = 24;
+            ws.Column(4).Width = 10;
+            ws.Column(5).Width = 13;
+            ws.Column(6).Width = 12;
+            ws.Column(7).Width = 12;
+            ws.Column(8).Width = 13;
+            ws.Column(9).Width = 24;
+
+            using var ms = new MemoryStream();
+            wb.SaveAs(ms);
+            var fileName = $"TonSilo_{phieu.SoPhieu ?? idPhieu.ToString("N")}_{DateTime.Now:yyyyMMdd_HHmm}.xlsx";
+            return new ExportFileResult
+            {
+                Content = ms.ToArray(),
+                FileName = fileName,
+                ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             };
         }
 

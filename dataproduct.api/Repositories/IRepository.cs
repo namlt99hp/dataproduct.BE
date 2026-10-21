@@ -3,6 +3,7 @@ using dataproduct.api.DTOs.CTD_Dto;
 using dataproduct.api.DTOs.NMLG_Dto;
 using dataproduct.api.Models;
 using dataproduct.api.Models.MasterData;
+using dataproduct.api.Models.NMLC;
 using dataproduct.api.ResponseModels;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
@@ -40,6 +41,7 @@ namespace dataproduct.api.Repositories
         Task AddAsync(BkNguyenLieu entity);
         Task UpdateAsync(BkNguyenLieu entity);
         Task DeleteAsync(int id);
+        Task<List<CanBangTaiRow>> GetCanBangTaiAsync(DateOnly ngaySX);
     }
     public interface IPhieuRepository
     {
@@ -427,6 +429,9 @@ namespace dataproduct.api.Repositories
 
         // Phiếu
         Task<BmPhieu?> GetPhieuByIdAsync(Guid idPhieu);
+
+        // Lookup NVL IDs theo nhóm + lò cao (dùng cho Cân bằng NVL)
+        Task<List<int>> GetNvlIdsByNhomAsync(IEnumerable<int> nhomNVLIds, int idLoCao);
     }
 
     public interface IBBGN_ThepLongRepository
@@ -603,13 +608,15 @@ namespace dataproduct.api.Repositories
 
     public interface IDonTrongPhoiRepository
     {
-        Task<IEnumerable<DonTrongPhoi>> GetAllAsync(string? macPhoi, string? mac, string? kichThuoc, int? isXacNhan = null);
+        Task<IEnumerable<DonTrongPhoi>> GetAllAsync(string? macPhoi, string? mac, string? kichThuoc, int? isXacNhan = null, bool excludeLocked = false, string? maVatTu = null);
         Task<DonTrongPhoi?> GetByIdAsync(int id);
         Task<DonTrongPhoi?> FindByKeyAsync(string macPhoi, string? mac, string? kichThuoc);
         Task AddAsync(DonTrongPhoi entity);
         Task UpdateAsync(DonTrongPhoi entity);
         Task DeleteAsync(int id);
         Task<bool> ExistsAsync(string macPhoi, string? mac, string? kichThuoc, int? excludeId = null);
+        Task SyncMaVatTuAsync();
+        Task<bool> ToggleLockAsync(int id);
     }
 
     public interface IHrc1PhuLieuNmRepository
@@ -625,5 +632,64 @@ namespace dataproduct.api.Repositories
         /// (1) phiếu tiêu hao BOF/LF (HRC1_TieuHao/HRC1_PhuLieu — mẻ đã đo/nhập thực tế),
         /// (2) Sổ Xuất-Nhập-Tồn (STD_XUAT_NHAP_TON_HRC1/STD_NXT_TOTAL_HRC1 — chi tiết + tổng hợp).</summary>
         Task<string?> GetInUseReasonAsync(int id);
+    }
+    
+    public interface ICanBangNLSourceRepository
+    {
+        // Gọi external BBGN HTTP API (BM_11/ThongKeSoLieuData), parse kip→Ca, trả rows mang klBG/klQuyKhoBG
+        // ca=1 (ngày) / ca=2 (đêm) / null = không lọc (lấy tất cả)
+        Task<List<CanBangNLSourceRow>> ExecHttpBbgnAsync(
+            CanBangNLSourceConfig src, DateTime tuNgay, DateTime denNgay,
+            System.Text.Json.Nodes.JsonObject itemParams, int? ca = null);
+
+        // Gọi GetDuLieuSiloPivotAsync cho từng (ca, idLoCao), resolve nhomNVLIds → nvlIds per lò cao
+        // ca=null: gọi cả ca1+ca2; idLoCao=null: gọi tất cả lò trong src.LoCaoList
+        Task<List<CanBangNLSourceRow>> ExecLgnlSiloAsync(
+            DateTime ngay, int? ca, int? idLoCao, CanBangNLSourceConfig src, List<int> nhomNVLIds);
+    }
+  
+    // ─── LC Tháp than ───
+    public interface ILC_ThanhPhamRepository
+    {
+        // Nhóm tháp than
+        Task<List<LC_CumThap>> GetAllNhomAsync(string? searchKey = null, int? scope = null);
+        Task<LC_CumThap?> GetNhomByIdAsync(int id);
+        Task<bool> NhomExistsAsync(int id);
+        Task<LC_CumThap> AddNhomAsync(LC_CumThap entity);
+        Task<LC_CumThap?> UpdateNhomAsync(LC_CumThap entity);
+        Task<bool> DeleteNhomAsync(int id);
+
+        // Phễu
+        Task<List<LC_TP_ThapThan_Pheu>> GetAllPheuAsync(int? thapThanId = null, string? searchKey = null, int? scope = null);
+        Task<LC_TP_ThapThan_Pheu?> GetPheuByIdAsync(int id);
+        Task<bool> PheuExistsAsync(int id);
+        Task<LC_TP_ThapThan_Pheu> AddPheuAsync(LC_TP_ThapThan_Pheu entity);
+        Task<LC_TP_ThapThan_Pheu?> UpdatePheuAsync(LC_TP_ThapThan_Pheu entity);
+        Task<bool> DeletePheuAsync(int id);
+
+        // Chi tiết
+        Task<List<LC_TP_ThapThan_ChiTiet>> GetChiTietAsync(DateTime? ngaySx = null, int? ca = null, int? pheuId = null);
+        Task<LC_TP_ThapThan_ChiTiet?> GetChiTietByIdAsync(int id);
+        Task<LC_TP_ThapThan_ChiTiet> AddChiTietAsync(LC_TP_ThapThan_ChiTiet entity);
+        Task<List<LC_TP_ThapThan_ChiTiet>> AddRangeChiTietAsync(IEnumerable<LC_TP_ThapThan_ChiTiet> entities);
+        Task<LC_TP_ThapThan_ChiTiet?> UpdateChiTietAsync(LC_TP_ThapThan_ChiTiet entity);
+        Task<bool> DeleteChiTietAsync(int id);
+        // Thay toàn bộ chi tiết của một ngày + ca (dùng khi lưu phiếu)
+        Task<List<LC_TP_ThapThan_ChiTiet>> ReplaceChiTietByNgayCaAsync(
+            DateTime ngaySx, int ca, IEnumerable<LC_TP_ThapThan_ChiTiet> entities);
+
+        // Kết quả phân tích than
+        Task<List<LC_TP_KetQuaPhanTichThan>> GetKetQuaPhanTichAsync(Guid phieuCaId, int scope);
+        // Thay toàn bộ kết quả phân tích của phiếu ca + scope
+        Task<List<LC_TP_KetQuaPhanTichThan>> ReplaceKetQuaPhanTichAsync(
+            Guid phieuCaId, int scope, IEnumerable<LC_TP_KetQuaPhanTichThan> entities);
+        Task<int> DeleteKetQuaPhanTichAsync(Guid phieuCaId, int scope);
+
+        // Sự cố trong ca
+        Task<List<LC_TP_SuCoTrongCa>> GetSuCoAsync(Guid phieuId, int scope);
+        // Thay toàn bộ sự cố của phiếu + scope; Stt đánh theo thứ tự danh sách
+        Task<List<LC_TP_SuCoTrongCa>> ReplaceSuCoAsync(
+            Guid phieuId, int scope, IEnumerable<LC_TP_SuCoTrongCa> entities);
+        Task<int> DeleteSuCoAsync(Guid phieuId, int scope);
     }
 }

@@ -1,4 +1,5 @@
 using dataproduct.api.Models;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
 namespace dataproduct.api.Repositories
@@ -12,7 +13,7 @@ namespace dataproduct.api.Repositories
             _context = context;
         }
 
-        public async Task<IEnumerable<DonTrongPhoi>> GetAllAsync(string? macPhoi, string? mac, string? kichThuoc, int? isXacNhan = null)
+        public async Task<IEnumerable<DonTrongPhoi>> GetAllAsync(string? macPhoi, string? mac, string? kichThuoc, int? isXacNhan = null, bool excludeLocked = false, string? maVatTu = null)
         {
             var query = _context.DonTrongPhois.AsQueryable();
 
@@ -29,6 +30,10 @@ namespace dataproduct.api.Repositories
                 else
                     query = query.Where(x => x.IsXacNhan != 1);
             }
+            if (excludeLocked)
+                query = query.Where(x => x.IsLock != 1);
+            if (!string.IsNullOrWhiteSpace(maVatTu))
+                query = query.Where(x => x.MaVatTu != null && x.MaVatTu.Contains(maVatTu));
 
             return await query.OrderBy(x => x.MacPhoi).ThenBy(x => x.KichThuoc).ToListAsync();
         }
@@ -71,6 +76,20 @@ namespace dataproduct.api.Repositories
             if (excludeId.HasValue)
                 query = query.Where(x => x.Id != excludeId.Value);
             return query.AnyAsync();
+        }
+
+        public async Task SyncMaVatTuAsync()
+        {
+            await _context.Database.ExecuteSqlRawAsync("EXEC sp_Sync_DonTrongPhoi_MaVatTu");
+        }
+
+        public async Task<bool> ToggleLockAsync(int id)
+        {
+            var item = await _context.DonTrongPhois.FirstOrDefaultAsync(x => x.Id == id);
+            if (item == null) return false;
+            item.IsLock = item.IsLock == 1 ? 0 : 1;
+            await _context.SaveChangesAsync();
+            return true;
         }
     }
 }

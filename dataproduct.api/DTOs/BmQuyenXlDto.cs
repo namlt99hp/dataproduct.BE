@@ -22,6 +22,10 @@ namespace dataproduct.api.DTOs
         public IReadOnlyList<string> ViewingForms { get; set; } = new List<string>();
         public IReadOnlyList<string> ChotPhieuForms { get; set; } = new List<string>();
         public IReadOnlyList<ExtraQuyenMenuItemDto> ExtraQuyens { get; set; } = new List<ExtraQuyenMenuItemDto>();
+        /// <summary>Kho dữ liệu (vung 5): MaBm KDL_* có QuyenChucNang = 5 (XEM).</summary>
+        public IReadOnlyList<string> KdlForms { get; set; } = new List<string>();
+        /// <summary>Quản trị (vung 6): MaBm QTRI_* có QuyenChucNang = 1 (XULY).</summary>
+        public IReadOnlyList<string> QtriForms { get; set; } = new List<string>();
     }
 
     public class BmQuyenXlCreateDto

@@ -370,6 +370,17 @@ namespace dataproduct.api.Services
                 .Where(x => x.Idphieu.HasValue && phieuIds.Contains(x.Idphieu.Value))
                 .ToListAsync();
 
+            var donTrongIds = soTheoDoiList
+                .Where(x => x.IdDonTrongPhoi.HasValue)
+                .Select(x => x.IdDonTrongPhoi!.Value)
+                .Distinct()
+                .ToList();
+            var donTrongLookup = donTrongIds.Count > 0
+                ? await _context.DonTrongPhois
+                    .Where(x => donTrongIds.Contains(x.Id))
+                    .ToDictionaryAsync(x => x.Id, x => x.MaVatTu)
+                : new Dictionary<int, string?>();
+
             var templatePath = Path.Combine(_env.WebRootPath, "templates", "BM_TongHopSoTheoDoiSanXuat.xlsx");
             if (!File.Exists(templatePath))
                 throw new FileNotFoundException($"Không tìm thấy file mẫu Excel: {templatePath}");
@@ -379,6 +390,11 @@ namespace dataproduct.api.Services
             // ── Sheet 1: Nguyên liệu & sản phẩm ──────────────────────────────
             var ws1 = workbook.Worksheet(1);
             ws1.Cell("C3").Value = $"Từ ngày: {fromDate:dd/MM/yyyy} đến ngày: {toDate:dd/MM/yyyy}";
+
+            // Chèn cột "Mã vật tư" sau cột "Kích thước" (col 7 → col 8 mới)
+            ws1.Column(8).InsertColumnsBefore(1);
+            ws1.Cell(5, 8).CopyFrom(ws1.Cell(5, 7));
+            ws1.Cell(5, 8).Value = "Mã vật tư";
 
             var stdRows = (from p in phieus
                            join d in soTheoDoiList on p.Idphieu equals d.Idphieu
@@ -393,6 +409,9 @@ namespace dataproduct.api.Services
                 if (i > 0)
                     ws1.Row(startRow1).CopyTo(ws1.Row(r));
 
+                var maVatTu = row.d.IdDonTrongPhoi.HasValue
+                    && donTrongLookup.TryGetValue(row.d.IdDonTrongPhoi.Value, out var mv) ? mv : null;
+
                 ws1.Cell(r, 1).Value = row.p.NgaySX?.ToDateTime(TimeOnly.MinValue);
                 ws1.Cell(r, 2).Value = row.p.Ca;
                 ws1.Cell(r, 3).Value = row.p.Kip;
@@ -406,15 +425,16 @@ namespace dataproduct.api.Services
                     _ => row.d.LoaiPhoi?.ToString()
                 };
                 ws1.Cell(r, 7).Value = row.d.KichThuoc;
-                ws1.Cell(r, 8).Value = row.d.PhoiRaLo;
-                ws1.Cell(r, 9).Value = row.d.PhoiHoiLo;
-                ws1.Cell(r, 10).Value = row.d.PhoiRaSan;
-                ws1.Cell(r, 11).Value = row.d.PhoiPheCn;
-                ws1.Cell(r, 12).Value = row.d.LoaiSp;
-                ws1.Cell(r, 13).Value = row.d.MacThep;
-                ws1.Cell(r, 14).Value = row.d.LenhSanXuat;
-                ws1.Cell(r, 15).Value = row.p.SoPhieu;
-                ws1.Cell(r, 16).Value = TinhTrangToText(row.p.TinhTrang);
+                ws1.Cell(r, 8).Value = maVatTu;         // Mã vật tư (mới)
+                ws1.Cell(r, 9).Value = row.d.PhoiRaLo;
+                ws1.Cell(r, 10).Value = row.d.PhoiHoiLo;
+                ws1.Cell(r, 11).Value = row.d.PhoiRaSan;
+                ws1.Cell(r, 12).Value = row.d.PhoiPheCn;
+                ws1.Cell(r, 13).Value = row.d.LoaiSp;
+                ws1.Cell(r, 14).Value = row.d.MacThep;
+                ws1.Cell(r, 15).Value = row.d.LenhSanXuat;
+                ws1.Cell(r, 16).Value = row.p.SoPhieu;
+                ws1.Cell(r, 17).Value = TinhTrangToText(row.p.TinhTrang);
             }
 
             if (stdRows.Count > 0)
@@ -508,6 +528,20 @@ namespace dataproduct.api.Services
             var loaiI = loaiIList.FirstOrDefault() ?? new CtdSoTheoDoi();
             var loaiII = loaiIIList.FirstOrDefault() ?? new CtdSoTheoDoi();
             var loaiIII = loaiIIIList.FirstOrDefault() ?? new CtdSoTheoDoi();
+
+            var chiTietDonTrongIds = soTheoDoiList
+                .Where(x => x.IdDonTrongPhoi.HasValue)
+                .Select(x => x.IdDonTrongPhoi!.Value)
+                .Distinct()
+                .ToList();
+            var chiTietDonTrongLookup = chiTietDonTrongIds.Count > 0
+                ? await _context.DonTrongPhois
+                    .Where(x => chiTietDonTrongIds.Contains(x.Id))
+                    .ToDictionaryAsync(x => x.Id, x => x.MaVatTu)
+                : new Dictionary<int, string?>();
+
+            string? GetMaVatTu(CtdSoTheoDoi d) =>
+                d.IdDonTrongPhoi.HasValue && chiTietDonTrongLookup.TryGetValue(d.IdDonTrongPhoi.Value, out var mv) ? mv : null;
 
             using var wb = new XLWorkbook();
             var ws = wb.AddWorksheet("Sổ theo dõi");
@@ -609,7 +643,7 @@ namespace dataproduct.api.Services
             row++;
 
             // Ghi từng loại vào nhóm 4 cột: label(c1-c3 merged) | value(c4)
-            void WriteLoaiBlock(int startRow, int c1, CtdSoTheoDoi d, string titleLabel)
+            void WriteLoaiBlock(int startRow, int c1, CtdSoTheoDoi d, string titleLabel, string? maVatTu = null)
             {
                 int c3 = c1 + 2, c4 = c1 + 3;
                 var loaiPhoi = d.LoaiPhoi switch { 1 => " - Phôi nóng", 2 => " - Phôi nguội", 3 => " - Khác", _ => "" };
@@ -623,6 +657,7 @@ namespace dataproduct.api.Services
                 (string Label, string? Value, bool BoldValue)[] fields =
                 [
                     ("- Kích thước:",                  d.KichThuoc is not null ? d.KichThuoc + " mm" : "", false),
+                    ("- Mã vật tư:",                   maVatTu ?? "",                                       false),
                     ("- Số phôi ra khỏi lò:",          d.PhoiRaLo?.ToString(),   true),
                     ("- Số phôi hồi lò:",              d.PhoiHoiLo?.ToString(),  true),
                     ("- Số phôi cần ra sản (T/P):",    d.PhoiRaSan?.ToString(),  false),
@@ -653,12 +688,12 @@ namespace dataproduct.api.Services
                 }
             }
 
-            const int LOAI_ROWS = 8; // 1 title + 7 field rows
+            const int LOAI_ROWS = 9; // 1 title + 8 field rows (kichThuoc, maVatTu, 6 số liệu)
             int secStart = row;
 
-            WriteLoaiBlock(secStart, 1, loaiI, "a. Mác phôi loại I");
-            WriteLoaiBlock(secStart, 5, loaiII, "b. Mác phôi loại II");
-            WriteLoaiBlock(secStart, 9, loaiIII, "c. Mác phôi loại III");
+            WriteLoaiBlock(secStart, 1, loaiI, "a. Mác phôi loại I", GetMaVatTu(loaiI));
+            WriteLoaiBlock(secStart, 5, loaiII, "b. Mác phôi loại II", GetMaVatTu(loaiII));
+            WriteLoaiBlock(secStart, 9, loaiIII, "c. Mác phôi loại III", GetMaVatTu(loaiIII));
 
             for (int r = secStart; r < secStart + LOAI_ROWS; r++)
                 ws.Row(r).Height = 15;
@@ -672,9 +707,9 @@ namespace dataproduct.api.Services
                 var eII = loaiIIList.Count > ei + 1 ? loaiIIList[ei + 1] : null;
                 var eIII = loaiIIIList.Count > ei + 1 ? loaiIIIList[ei + 1] : null;
 
-                if (eI is not null) WriteLoaiBlock(extraStart, 1, eI, "a. (tiếp theo)");
-                if (eII is not null) WriteLoaiBlock(extraStart, 5, eII, "b. (tiếp theo)");
-                if (eIII is not null) WriteLoaiBlock(extraStart, 9, eIII, "c. (tiếp theo)");
+                if (eI is not null) WriteLoaiBlock(extraStart, 1, eI, "a. (tiếp theo)", GetMaVatTu(eI));
+                if (eII is not null) WriteLoaiBlock(extraStart, 5, eII, "b. (tiếp theo)", GetMaVatTu(eII));
+                if (eIII is not null) WriteLoaiBlock(extraStart, 9, eIII, "c. (tiếp theo)", GetMaVatTu(eIII));
 
                 for (int r = extraStart; r < extraStart + LOAI_ROWS; r++)
                     ws.Row(r).Height = 15;

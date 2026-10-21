@@ -20,8 +20,8 @@ namespace dataproduct.api.Services
             _repo = repo;
         }
 
-        public Task<IEnumerable<DonTrongPhoi>> GetAllAsync(string? macPhoi, string? mac, string? kichThuoc, int? isXacNhan = null)
-            => _repo.GetAllAsync(macPhoi, mac, kichThuoc, isXacNhan);
+        public Task<IEnumerable<DonTrongPhoi>> GetAllAsync(string? macPhoi, string? mac, string? kichThuoc, int? isXacNhan = null, bool excludeLocked = false, string? maVatTu = null)
+            => _repo.GetAllAsync(macPhoi, mac, kichThuoc, isXacNhan, excludeLocked, maVatTu);
 
         public Task<DonTrongPhoi?> GetByIdAsync(int id)
             => _repo.GetByIdAsync(id);
@@ -59,6 +59,10 @@ namespace dataproduct.api.Services
             await _repo.DeleteAsync(id);
             return true;
         }
+
+        public Task SyncMaVatTuAsync() => _repo.SyncMaVatTuAsync();
+
+        public Task<bool> ToggleLockAsync(int id) => _repo.ToggleLockAsync(id);
 
         public async Task<byte[]> ExportExcelAsync()
         {

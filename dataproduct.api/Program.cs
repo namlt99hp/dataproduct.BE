@@ -4,13 +4,36 @@ using dataproduct.api.Models.MasterData;
 using dataproduct.api.Repositories;
 using DinkToPdf;
 using DinkToPdf.Contracts;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc.Authorization;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using System;
 using System.Reflection;
+using System.Text;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// --- JWT Authentication ---
+var jwtSecret = builder.Configuration["Jwt:Secret"]!;
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer           = true,
+            ValidateAudience         = true,
+            ValidateLifetime         = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer              = builder.Configuration["Jwt:Issuer"],
+            ValidAudience            = builder.Configuration["Jwt:Audience"],
+            IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+            ClockSkew                = TimeSpan.Zero   // không có grace period
+        };
+    });
 
 // Add services to the container.
 // Thêm CORS
@@ -75,7 +98,13 @@ builder.Services.AddDbContext<ProductFormContext>(options =>
 builder.Services.AddDbContext<ProductDataMasterDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("MasterDbConnection")));
 
-builder.Services.AddControllers();
+builder.Services.AddControllers(options =>
+{
+    // Tất cả endpoint mặc định đều cần xác thực — dùng [AllowAnonymous] để loại trừ
+    options.Filters.Add(new AuthorizeFilter(new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build()));
+});
 // Add limit request API
 builder.Services.AddRateLimiter(options =>
 {
@@ -106,27 +135,44 @@ builder.Services.AddRateLimiter(options =>
 });
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+    {
+        Name         = "Authorization",
+        Type         = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+        Scheme       = "Bearer",
+        BearerFormat = "JWT",
+        In           = Microsoft.OpenApi.Models.ParameterLocation.Header,
+        Description  = "Nhập JWT token. Ví dụ: Bearer eyJhbGci..."
+    });
+    c.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+    {
+        {
+            new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+            {
+                Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                {
+                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                    Id   = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
 
 var app = builder.Build();
-// use limit request
+
 app.UseRateLimiter();
-
-// 🔑 1. STATIC FILES (React build)
+app.UseCors("AllowAllOrigins");
 app.UseStaticFiles();
-
-// 🔑 2. API
+app.UseAuthentication();
+app.UseAuthorization();
 app.MapControllers();
-
-// 🔑 3. SWAGGER (OK)
 app.UseSwagger();
 app.UseSwaggerUI();
-
-// 🔑 4. SPA FALLBACK – QUAN TRỌNG NHẤT
 app.MapFallbackToFile("index.html");
-
-// 🔑 5. CORS (nếu cần)
-app.UseCors("AllowAllOrigins");
 
 // ❌ KHÔNG HTTPS REDIRECTION
 // ❌ KHÔNG UseDefaultFiles

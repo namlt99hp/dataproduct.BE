@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
+using dataproduct.api.Models.NMLC;
 using dataproduct.api.ResponseModels;
 using Microsoft.EntityFrameworkCore;
 
@@ -78,7 +79,7 @@ public partial class ProductFormContext : DbContext
     public virtual DbSet<MacThep> MacTheps { get; set; }
     public virtual DbSet<MayDuc> MayDucs { get; set; }
     public virtual DbSet<MacThep_MayDuc> MacThep_MayDucs { get; set; }
-    public virtual DbSet<NhomPhanLoaiMacThep> NhomPhanLoaiMacTheps {get; set;}
+    public virtual DbSet<NhomPhanLoaiMacThep> NhomPhanLoaiMacTheps { get; set; }
     public virtual DbSet<DonTrongPhoi> DonTrongPhois { get; set; }
 
     // HRC2 Slab
@@ -102,6 +103,11 @@ public partial class ProductFormContext : DbContext
     //    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     //#warning To protect potentially sensitive information in your connection string, you should move it out of source code. You can avoid scaffolding the connection string by using the Name= syntax to read it from configuration - see https://go.microsoft.com/fwlink/?linkid=2131148. For more guidance on storing connection strings, see https://go.microsoft.com/fwlink/?LinkId=723263.
     //        => optionsBuilder.UseSqlServer("Server=192.168.240.3,1433;Database=PRODUCT_FORM;User Id=sa;Password=HPDQ@1234;TrustServerCertificate=True;");
+
+
+    /// <summary>
+    /// NMLG
+    /// </summary>
     public virtual DbSet<LG_NL_SiLo> LG_NL_SiLo { get; set; }
     public virtual DbSet<LG_NL_Mapping> LG_NL_Mapping { get; set; }
     public virtual DbSet<LG_NL_NVL> LG_NL_NVL { get; set; }
@@ -145,8 +151,19 @@ public partial class ProductFormContext : DbContext
     public virtual DbSet<LC_PhoiTron> LC_PhoiTron { get; set; }
     public virtual DbSet<LC_PhoiTronChiTiet> LC_PhoiTronChiTiet { get; set; }
     public virtual DbSet<LG_PB_Map_NvlCVH_LoCao> LG_PB_Map_NvlCVH_LoCao { get; set; }
+
+    // NM.NL — kết quả SP, không có PK
+    public DbSet<CanBangTaiRow> CanBangTaiRows => Set<CanBangTaiRow>();
+    // NM.LC
+    public virtual DbSet<LC_CumThap> LC_CumThap { get; set; }
+    public virtual DbSet<LC_TP_ThapThan_Pheu> LC_TP_ThapThan_Pheu { get; set; }
+    public virtual DbSet<LC_TP_ThapThan_ChiTiet> LC_TP_ThapThan_ChiTiet { get; set; }
+    public virtual DbSet<LC_TP_KetQuaPhanTichThan> LC_TP_KetQuaPhanTichThan { get; set; }
+    public virtual DbSet<LC_TP_SuCoTrongCa> LC_TP_SuCoTrongCa { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<CanBangTaiRow>().HasNoKey();
 
 
         modelBuilder.Entity<BkNguyenLieu>(entity =>
@@ -274,7 +291,7 @@ public partial class ProductFormContext : DbContext
             entity.ToTable("BM_Phieu_ChiTiet");
 
             entity.Property(e => e.Id).HasColumnName("ID");
-            entity.Property(e => e.GiaTri).HasMaxLength(500);
+            entity.Property(e => e.GiaTri).HasMaxLength(1000);
             entity.Property(e => e.PhieuId).HasColumnName("PhieuID");
             entity.Property(e => e.RowId).HasColumnName("RowID");
             entity.Property(e => e.ThongSo).HasMaxLength(20);
@@ -888,6 +905,10 @@ public partial class ProductFormContext : DbContext
             entity.Property(e => e.Mac).HasMaxLength(100);
             entity.Property(e => e.KichThuoc).HasMaxLength(100);
             entity.Property(e => e.IsXacNhan).HasColumnName("IsXacNhan");
+            entity.Property(e => e.MaVatTu).HasMaxLength(50);
+            entity.Property(e => e.TenVatTu).HasMaxLength(200);
+            entity.Property(e => e.IsSync).HasColumnName("isSync");
+            entity.Property(e => e.IsLock).HasColumnName("isLock");
         });
 
         // --- HRC1 ---
@@ -1282,6 +1303,23 @@ public partial class ProductFormContext : DbContext
             // biệt hoa/thường — "IdSlab" và "IDSlab" bị coi là trùng tên cột (xem hrc1_slab_edit.sql).
             entity.Property(e => e.IDSlab).HasColumnName("IDSlabMoi").HasMaxLength(50).IsRequired();
             entity.Property(e => e.NgayCapNhat).HasColumnType("datetime");
+        });
+
+        modelBuilder.Entity<LC_TP_KetQuaPhanTichThan>(entity =>
+        {
+            entity.Property(e => e.Lan1).HasPrecision(6, 2);
+            entity.Property(e => e.Lan2).HasPrecision(6, 2);
+            entity.Property(e => e.Lan3).HasPrecision(6, 2);
+            entity.Property(e => e.Lan4).HasPrecision(6, 2);
+            entity.Property(e => e.Lan5).HasPrecision(6, 2);
+            entity.Property(e => e.Lan6).HasPrecision(6, 2);
+            entity.HasIndex(e => new { e.PhieuCaId, e.Scope });
+        });
+
+        modelBuilder.Entity<LC_TP_SuCoTrongCa>(entity =>
+        {
+            entity.Property(e => e.PhieuId).HasColumnName("PhieuID");
+            entity.HasIndex(e => new { e.PhieuId, e.Scope });
         });
 
         OnModelCreatingPartial(modelBuilder);

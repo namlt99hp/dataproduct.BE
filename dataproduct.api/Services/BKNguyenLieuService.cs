@@ -86,5 +86,8 @@ namespace dataproduct.api.Services
             await _repo.DeleteAsync(id);
             return true;
         }
+
+        public async Task<List<CanBangTaiRow>> GetCanBangTaiAsync(DateOnly ngaySX)
+            => await _repo.GetCanBangTaiAsync(ngaySX);
     }
 }
