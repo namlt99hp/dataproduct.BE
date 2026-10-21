@@ -8,6 +8,8 @@
 
         public string? TenPheu { get; set; }
 
+        public int? ThuTu { get; set; }
+
         public bool IsDelete { get; set; }
     }
 }
