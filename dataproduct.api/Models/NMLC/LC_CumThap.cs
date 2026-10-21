@@ -3,7 +3,7 @@
     // Cụm tháp (bảng dùng chung): VD "Tháp than 1, 2". Scope: 1 = Thành phẩm 1, 2 = Thành phẩm 2
     public class LC_CumThap
     {
-        public int Id { get; set; }
+        public int ID { get; set; }
 
         public int Scope { get; set; }
 

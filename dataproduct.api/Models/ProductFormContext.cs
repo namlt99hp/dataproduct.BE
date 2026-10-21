@@ -155,7 +155,6 @@ public partial class ProductFormContext : DbContext
     // NM.NL — kết quả SP, không có PK
     public DbSet<CanBangTaiRow> CanBangTaiRows => Set<CanBangTaiRow>();
     // NM.LC
-    public virtual DbSet<LC_CumThap> LC_CumThap { get; set; }
     public virtual DbSet<LC_TP_ThapThan_Pheu> LC_TP_ThapThan_Pheu { get; set; }
     public virtual DbSet<LC_TP_ThapThan_ChiTiet> LC_TP_ThapThan_ChiTiet { get; set; }
     public virtual DbSet<LC_TP_KetQuaPhanTichThan> LC_TP_KetQuaPhanTichThan { get; set; }
