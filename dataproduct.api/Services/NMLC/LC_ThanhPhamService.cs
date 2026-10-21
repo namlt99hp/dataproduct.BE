@@ -1,14 +1,14 @@
-﻿using dataproduct.api.DTOs.NMLC;
+using dataproduct.api.DTOs.NMLC;
 using dataproduct.api.Models.NMLC;
 using dataproduct.api.Repositories;
 
 namespace dataproduct.api.Services.NMLC
 {
-    public class LC_ThapThanService
+    public class LC_ThanhPhamService
     {
-        private readonly ILC_ThapThanRepository _repo;
+        private readonly ILC_ThanhPhamRepository _repo;
 
-        public LC_ThapThanService(ILC_ThapThanRepository repo)
+        public LC_ThanhPhamService(ILC_ThanhPhamRepository repo)
         {
             _repo = repo;
         }
@@ -57,9 +57,9 @@ namespace dataproduct.api.Services.NMLC
 
         // ─── Phễu ───
 
-        public async Task<List<PheuDto>> GetAllPheuAsync(int? thapThanId = null, string? searchKey = null)
+        public async Task<List<PheuDto>> GetAllPheuAsync(int? thapThanId = null, string? searchKey = null, int? scope = null)
         {
-            var list = await _repo.GetAllPheuAsync(thapThanId, searchKey);
+            var list = await _repo.GetAllPheuAsync(thapThanId, searchKey, scope);
             var tenNhom = await GetTenNhomMapAsync();
             return list.Select(x => ToDto(x, tenNhom)).ToList();
         }
@@ -79,7 +79,8 @@ namespace dataproduct.api.Services.NMLC
             var entity = await _repo.AddPheuAsync(new LC_TP_ThapThan_Pheu
             {
                 ThapThanId = dto.ThapThanId,
-                TenPheu = dto.TenPheu
+                TenPheu = dto.TenPheu,
+                ThuTu = dto.ThuTu
             });
             return ToDto(entity, await GetTenNhomMapAsync());
         }
@@ -93,7 +94,8 @@ namespace dataproduct.api.Services.NMLC
             {
                 Id = id,
                 ThapThanId = dto.ThapThanId,
-                TenPheu = dto.TenPheu
+                TenPheu = dto.TenPheu,
+                ThuTu = dto.ThuTu
             });
             return entity == null ? null : ToDto(entity, await GetTenNhomMapAsync());
         }
@@ -177,7 +179,8 @@ namespace dataproduct.api.Services.NMLC
             Id = e.Id,
             ThapThanId = e.ThapThanId,
             TenThapThan = tenNhom.GetValueOrDefault(e.ThapThanId),
-            TenPheu = e.TenPheu
+            TenPheu = e.TenPheu,
+            ThuTu = e.ThuTu
         };
 
         private static ChiTietThapThanDto ToDto(LC_TP_ThapThan_ChiTiet e, Dictionary<int, LC_TP_ThapThan_Pheu> pheuMap)
@@ -222,6 +225,96 @@ namespace dataproduct.api.Services.NMLC
             KhoiLuongCan2A = d.KhoiLuongCan2A,
             KhoiLuongQuyKho = d.KhoiLuongQuyKho,
             LuyKeQuyKho = d.LuyKeQuyKho
+        };
+
+        // ─── Kết quả phân tích than ───
+
+        public async Task<List<KetQuaPhanTichThanDto>> GetKetQuaPhanTichAsync(Guid phieuCaId, int scope)
+        {
+            var list = await _repo.GetKetQuaPhanTichAsync(phieuCaId, scope);
+            return list.Select(ToDto).ToList();
+        }
+
+        // Lưu toàn bộ kết quả phân tích của 1 phiếu ca + scope (xóa cũ, thêm mới)
+        public async Task<List<KetQuaPhanTichThanDto>> SaveKetQuaPhanTichAsync(
+            Guid phieuCaId, int scope, List<KetQuaPhanTichThanSaveDto> items)
+        {
+            var saved = await _repo.ReplaceKetQuaPhanTichAsync(
+                phieuCaId, scope, items.Select(ToEntity).ToList());
+            return saved.Select(ToDto).ToList();
+        }
+
+        public Task<int> DeleteKetQuaPhanTichAsync(Guid phieuCaId, int scope)
+            => _repo.DeleteKetQuaPhanTichAsync(phieuCaId, scope);
+
+        private static KetQuaPhanTichThanDto ToDto(LC_TP_KetQuaPhanTichThan e) => new()
+        {
+            Id = e.Id,
+            PhieuCaId = e.PhieuCaId,
+            Scope = e.Scope,
+            ChiTieu = e.ChiTieu,
+            Lan1 = e.Lan1,
+            Lan2 = e.Lan2,
+            Lan3 = e.Lan3,
+            Lan4 = e.Lan4,
+            Lan5 = e.Lan5,
+            Lan6 = e.Lan6,
+            GhiChu = e.GhiChu
+        };
+
+        private static LC_TP_KetQuaPhanTichThan ToEntity(KetQuaPhanTichThanSaveDto d) => new()
+        {
+            ChiTieu = d.ChiTieu.Trim(),
+            Lan1 = d.Lan1,
+            Lan2 = d.Lan2,
+            Lan3 = d.Lan3,
+            Lan4 = d.Lan4,
+            Lan5 = d.Lan5,
+            Lan6 = d.Lan6,
+            GhiChu = d.GhiChu
+        };
+
+        // ─── Sự cố trong ca ───
+
+        public async Task<List<SuCoTrongCaDto>> GetSuCoAsync(Guid phieuId, int scope)
+        {
+            var list = await _repo.GetSuCoAsync(phieuId, scope);
+            return list.Select(ToDto).ToList();
+        }
+
+        // Lưu toàn bộ sự cố của phiếu (xóa cũ, thêm mới); Stt theo thứ tự danh sách
+        public async Task<List<SuCoTrongCaDto>> SaveSuCoAsync(
+            Guid phieuId, int scope, List<SuCoTrongCaSaveDto> items)
+        {
+            var saved = await _repo.ReplaceSuCoAsync(phieuId, scope, items.Select(ToEntity).ToList());
+            return saved.Select(ToDto).ToList();
+        }
+
+        public Task<int> DeleteSuCoAsync(Guid phieuId, int scope)
+            => _repo.DeleteSuCoAsync(phieuId, scope);
+
+        private static SuCoTrongCaDto ToDto(LC_TP_SuCoTrongCa e) => new()
+        {
+            Id = e.Id,
+            PhieuId = e.PhieuId,
+            Scope = e.Scope,
+            Stt = e.Stt,
+            TinhTrangSuCo = e.TinhTrangSuCo,
+            TgPhatHienSuCo = e.TgPhatHienSuCo,
+            CachKhacPhuc = e.CachKhacPhuc,
+            TgBatDau = e.TgBatDau,
+            TgKetThuc = e.TgKetThuc,
+            NhanLuc = e.NhanLuc
+        };
+
+        private static LC_TP_SuCoTrongCa ToEntity(SuCoTrongCaSaveDto d) => new()
+        {
+            TinhTrangSuCo = d.TinhTrangSuCo,
+            TgPhatHienSuCo = d.TgPhatHienSuCo,
+            CachKhacPhuc = d.CachKhacPhuc,
+            TgBatDau = d.TgBatDau,
+            TgKetThuc = d.TgKetThuc,
+            NhanLuc = d.NhanLuc
         };
     }
 }

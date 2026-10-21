@@ -1,4 +1,4 @@
-﻿
+
 using dataproduct.api.DTOs.NMLC;
 using dataproduct.api.Services.NMLC;
 using Microsoft.AspNetCore.Mvc;
@@ -7,11 +7,11 @@ namespace dataproduct.api.Controllers.NMLC
 {
     [Route("api/[controller]")]
     [ApiController]
-    public class LC_ThapThanController : ControllerBase
+    public class LC_ThanhPhamController : ControllerBase
     {
-        private readonly LC_ThapThanService _service;
+        private readonly LC_ThanhPhamService _service;
 
-        public LC_ThapThanController(LC_ThapThanService service)
+        public LC_ThanhPhamController(LC_ThanhPhamService service)
         {
             _service = service;
         }
@@ -89,10 +89,11 @@ namespace dataproduct.api.Controllers.NMLC
         [HttpGet("pheu")]
         public async Task<IActionResult> GetPheu(
             [FromQuery] int? thapThanId,
-            [FromQuery] string? searchKey)
+            [FromQuery] string? searchKey,
+            [FromQuery] int? scope)
         {
             var result = await _service.GetAllPheuAsync(
-                thapThanId, searchKey);
+                thapThanId, searchKey, scope);
 
             return Ok(result);
         }
@@ -257,5 +258,95 @@ namespace dataproduct.api.Controllers.NMLC
                 : Ok(result);
         }
 
+        // =====================================================
+        // 4. KẾT QUẢ PHÂN TÍCH THAN
+        // =====================================================
+
+        [HttpGet("ket-qua-phan-tich")]
+        public async Task<IActionResult> GetKetQuaPhanTich(
+            [FromQuery] Guid phieuCaId,
+            [FromQuery] int scope)
+        {
+            return Ok(await _service.GetKetQuaPhanTichAsync(phieuCaId, scope));
+        }
+
+        // Thay thế toàn bộ kết quả phân tích của phiếu ca + scope
+        [HttpPut("ket-qua-phan-tich")]
+        public async Task<IActionResult> ReplaceKetQuaPhanTich(
+            [FromQuery] Guid phieuCaId,
+            [FromQuery] int scope,
+            [FromBody] List<KetQuaPhanTichThanSaveDto> items)
+        {
+            var duplicated = items
+                .GroupBy(x => x.ChiTieu.Trim(), StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault(g => g.Count() > 1);
+
+            if (duplicated != null)
+            {
+                return BadRequest(new
+                {
+                    message = $"Chỉ tiêu '{duplicated.Key}' bị trùng."
+                });
+            }
+
+            return Ok(await _service.SaveKetQuaPhanTichAsync(phieuCaId, scope, items));
+        }
+
+        [HttpDelete("ket-qua-phan-tich")]
+        public async Task<IActionResult> DeleteKetQuaPhanTich(
+            [FromQuery] Guid phieuCaId,
+            [FromQuery] int scope)
+        {
+            var deleted = await _service.DeleteKetQuaPhanTichAsync(phieuCaId, scope);
+
+            return deleted > 0
+                ? NoContent()
+                : NotFound(new { message = "Không có kết quả phân tích để xóa." });
+        }
+
+        // =====================================================
+        // 5. SỰ CỐ TRONG CA
+        // =====================================================
+
+        [HttpGet("su-co")]
+        public async Task<IActionResult> GetSuCo(
+            [FromQuery] Guid phieuId,
+            [FromQuery] int scope)
+        {
+            return Ok(await _service.GetSuCoAsync(phieuId, scope));
+        }
+
+        // Thay thế toàn bộ sự cố của phiếu + scope
+        [HttpPut("su-co")]
+        public async Task<IActionResult> ReplaceSuCo(
+            [FromQuery] Guid phieuId,
+            [FromQuery] int scope,
+            [FromBody] List<SuCoTrongCaSaveDto> items)
+        {
+            var invalid = items.FindIndex(x =>
+                x.TgBatDau.HasValue && x.TgKetThuc.HasValue && x.TgKetThuc < x.TgBatDau);
+
+            if (invalid >= 0)
+            {
+                return BadRequest(new
+                {
+                    message = $"Sự cố dòng {invalid + 1}: thời gian kết thúc phải sau thời gian bắt đầu."
+                });
+            }
+
+            return Ok(await _service.SaveSuCoAsync(phieuId, scope, items));
+        }
+
+        [HttpDelete("su-co")]
+        public async Task<IActionResult> DeleteSuCo(
+            [FromQuery] Guid phieuId,
+            [FromQuery] int scope)
+        {
+            var deleted = await _service.DeleteSuCoAsync(phieuId, scope);
+
+            return deleted > 0
+                ? NoContent()
+                : NotFound(new { message = "Phiếu không có sự cố để xóa." });
+        }
     }
 }

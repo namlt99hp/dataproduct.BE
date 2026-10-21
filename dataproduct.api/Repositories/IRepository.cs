@@ -649,7 +649,7 @@ namespace dataproduct.api.Repositories
     }
   
     // ─── LC Tháp than ───
-    public interface ILC_ThapThanRepository
+    public interface ILC_ThanhPhamRepository
     {
         // Nhóm tháp than
         Task<List<LC_CumThap>> GetAllNhomAsync(string? searchKey = null, int? scope = null);
@@ -660,7 +660,7 @@ namespace dataproduct.api.Repositories
         Task<bool> DeleteNhomAsync(int id);
 
         // Phễu
-        Task<List<LC_TP_ThapThan_Pheu>> GetAllPheuAsync(int? thapThanId = null, string? searchKey = null);
+        Task<List<LC_TP_ThapThan_Pheu>> GetAllPheuAsync(int? thapThanId = null, string? searchKey = null, int? scope = null);
         Task<LC_TP_ThapThan_Pheu?> GetPheuByIdAsync(int id);
         Task<bool> PheuExistsAsync(int id);
         Task<LC_TP_ThapThan_Pheu> AddPheuAsync(LC_TP_ThapThan_Pheu entity);
@@ -677,5 +677,19 @@ namespace dataproduct.api.Repositories
         // Thay toàn bộ chi tiết của một ngày + ca (dùng khi lưu phiếu)
         Task<List<LC_TP_ThapThan_ChiTiet>> ReplaceChiTietByNgayCaAsync(
             DateTime ngaySx, int ca, IEnumerable<LC_TP_ThapThan_ChiTiet> entities);
+
+        // Kết quả phân tích than
+        Task<List<LC_TP_KetQuaPhanTichThan>> GetKetQuaPhanTichAsync(Guid phieuCaId, int scope);
+        // Thay toàn bộ kết quả phân tích của phiếu ca + scope
+        Task<List<LC_TP_KetQuaPhanTichThan>> ReplaceKetQuaPhanTichAsync(
+            Guid phieuCaId, int scope, IEnumerable<LC_TP_KetQuaPhanTichThan> entities);
+        Task<int> DeleteKetQuaPhanTichAsync(Guid phieuCaId, int scope);
+
+        // Sự cố trong ca
+        Task<List<LC_TP_SuCoTrongCa>> GetSuCoAsync(Guid phieuId, int scope);
+        // Thay toàn bộ sự cố của phiếu + scope; Stt đánh theo thứ tự danh sách
+        Task<List<LC_TP_SuCoTrongCa>> ReplaceSuCoAsync(
+            Guid phieuId, int scope, IEnumerable<LC_TP_SuCoTrongCa> entities);
+        Task<int> DeleteSuCoAsync(Guid phieuId, int scope);
     }
 }

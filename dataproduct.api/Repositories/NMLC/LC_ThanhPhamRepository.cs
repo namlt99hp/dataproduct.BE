@@ -1,15 +1,15 @@
-﻿using dataproduct.api.Models;
+using dataproduct.api.Models;
 using dataproduct.api.Models.NMLC;
 using dataproduct.api.Repositories;
 using Microsoft.EntityFrameworkCore;
 
 namespace dataproduct.api.Repositories.NMLC
 {
-    public class LC_ThapThanRepository : ILC_ThapThanRepository
+    public class LC_ThanhPhamRepository : ILC_ThanhPhamRepository
     {
         private readonly ProductFormContext _context;
 
-        public LC_ThapThanRepository(ProductFormContext context)
+        public LC_ThanhPhamRepository(ProductFormContext context)
         {
             _context = context;
         }
@@ -80,17 +80,31 @@ namespace dataproduct.api.Repositories.NMLC
 
         // ─── Phễu ───
 
-        public async Task<List<LC_TP_ThapThan_Pheu>> GetAllPheuAsync(int? thapThanId = null, string? searchKey = null)
+        public async Task<List<LC_TP_ThapThan_Pheu>> GetAllPheuAsync(
+            int? thapThanId = null, string? searchKey = null, int? scope = null)
         {
-            var query = _context.LC_TP_ThapThan_Pheu.AsNoTracking().Where(x => !x.IsDelete);
+            // Join cụm tháp: chỉ lấy phễu của cụm còn hiệu lực, lọc được theo xưởng (scope)
+            var query =
+                from p in _context.LC_TP_ThapThan_Pheu.AsNoTracking()
+                join c in _context.LC_CumThap.AsNoTracking() on p.ThapThanId equals c.Id
+                where !p.IsDelete && !c.IsDelete
+                select new { p, c };
 
             if (thapThanId.HasValue)
-                query = query.Where(x => x.ThapThanId == thapThanId.Value);
+                query = query.Where(x => x.p.ThapThanId == thapThanId.Value);
+
+            if (scope.HasValue)
+                query = query.Where(x => x.c.Scope == scope.Value);
 
             if (!string.IsNullOrWhiteSpace(searchKey))
-                query = query.Where(x => x.TenPheu != null && x.TenPheu.Contains(searchKey));
+                query = query.Where(x => x.p.TenPheu != null && x.p.TenPheu.Contains(searchKey));
 
-            return await query.OrderBy(x => x.ThapThanId).ThenBy(x => x.Id).ToListAsync();
+            // Thứ tự: cụm tháp (ThuTu), rồi thứ tự phễu (ThuTu; chưa đặt thì xếp cuối), rồi tên phễu
+            return await query
+                .OrderBy(x => x.c.ThuTu).ThenBy(x => x.c.Id)
+                .ThenBy(x => x.p.ThuTu ?? int.MaxValue).ThenBy(x => x.p.TenPheu).ThenBy(x => x.p.Id)
+                .Select(x => x.p)
+                .ToListAsync();
         }
 
         public async Task<LC_TP_ThapThan_Pheu?> GetPheuByIdAsync(int id)
@@ -121,6 +135,7 @@ namespace dataproduct.api.Repositories.NMLC
 
             existing.ThapThanId = entity.ThapThanId;
             existing.TenPheu = entity.TenPheu;
+            existing.ThuTu = entity.ThuTu;
             await _context.SaveChangesAsync();
             return existing;
         }
@@ -220,6 +235,91 @@ namespace dataproduct.api.Repositories.NMLC
             await _context.SaveChangesAsync();
             await tx.CommitAsync();
             return list;
+        }
+
+        // ─── Kết quả phân tích than (LC_TP_KetQuaPhanTichThan) ───
+
+        public async Task<List<LC_TP_KetQuaPhanTichThan>> GetKetQuaPhanTichAsync(Guid phieuCaId, int scope)
+        {
+            return await _context.LC_TP_KetQuaPhanTichThan
+                .AsNoTracking()
+                .Where(x => x.PhieuCaId == phieuCaId && x.Scope == scope)
+                .OrderBy(x => x.Id)
+                .ToListAsync();
+        }
+
+        public async Task<List<LC_TP_KetQuaPhanTichThan>> ReplaceKetQuaPhanTichAsync(
+            Guid phieuCaId, int scope, IEnumerable<LC_TP_KetQuaPhanTichThan> entities)
+        {
+            var list = entities.ToList();
+
+            await using var tx = await _context.Database.BeginTransactionAsync();
+
+            var old = await _context.LC_TP_KetQuaPhanTichThan
+                .Where(x => x.PhieuCaId == phieuCaId && x.Scope == scope)
+                .ToListAsync();
+            _context.LC_TP_KetQuaPhanTichThan.RemoveRange(old);
+
+            foreach (var e in list)
+            {
+                e.PhieuCaId = phieuCaId;
+                e.Scope = scope;
+            }
+            _context.LC_TP_KetQuaPhanTichThan.AddRange(list);
+
+            await _context.SaveChangesAsync();
+            await tx.CommitAsync();
+            return list;
+        }
+
+        public async Task<int> DeleteKetQuaPhanTichAsync(Guid phieuCaId, int scope)
+        {
+            return await _context.LC_TP_KetQuaPhanTichThan
+                .Where(x => x.PhieuCaId == phieuCaId && x.Scope == scope)
+                .ExecuteDeleteAsync();
+        }
+
+        // ─── Sự cố trong ca (LC_TP_SuCoTrongCa) ───
+
+        public async Task<List<LC_TP_SuCoTrongCa>> GetSuCoAsync(Guid phieuId, int scope)
+        {
+            return await _context.LC_TP_SuCoTrongCa
+                .AsNoTracking()
+                .Where(x => x.PhieuId == phieuId && x.Scope == scope)
+                .OrderBy(x => x.Stt)
+                .ToListAsync();
+        }
+
+        public async Task<List<LC_TP_SuCoTrongCa>> ReplaceSuCoAsync(
+            Guid phieuId, int scope, IEnumerable<LC_TP_SuCoTrongCa> entities)
+        {
+            var list = entities.ToList();
+
+            await using var tx = await _context.Database.BeginTransactionAsync();
+
+            var old = await _context.LC_TP_SuCoTrongCa
+                .Where(x => x.PhieuId == phieuId && x.Scope == scope)
+                .ToListAsync();
+            _context.LC_TP_SuCoTrongCa.RemoveRange(old);
+
+            for (var i = 0; i < list.Count; i++)
+            {
+                list[i].PhieuId = phieuId;
+                list[i].Scope = scope;
+                list[i].Stt = i + 1;
+            }
+            _context.LC_TP_SuCoTrongCa.AddRange(list);
+
+            await _context.SaveChangesAsync();
+            await tx.CommitAsync();
+            return list;
+        }
+
+        public async Task<int> DeleteSuCoAsync(Guid phieuId, int scope)
+        {
+            return await _context.LC_TP_SuCoTrongCa
+                .Where(x => x.PhieuId == phieuId && x.Scope == scope)
+                .ExecuteDeleteAsync();
         }
     }
 }

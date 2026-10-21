@@ -149,6 +149,8 @@ public partial class ProductFormContext : DbContext
     public virtual DbSet<LC_CumThap> LC_CumThap { get; set; }
     public virtual DbSet<LC_TP_ThapThan_Pheu> LC_TP_ThapThan_Pheu { get; set; }
     public virtual DbSet<LC_TP_ThapThan_ChiTiet> LC_TP_ThapThan_ChiTiet { get; set; }
+    public virtual DbSet<LC_TP_KetQuaPhanTichThan> LC_TP_KetQuaPhanTichThan { get; set; }
+    public virtual DbSet<LC_TP_SuCoTrongCa> LC_TP_SuCoTrongCa { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -1229,6 +1231,23 @@ public partial class ProductFormContext : DbContext
             // biệt hoa/thường — "IdSlab" và "IDSlab" bị coi là trùng tên cột (xem hrc1_slab_edit.sql).
             entity.Property(e => e.IDSlab).HasColumnName("IDSlabMoi").HasMaxLength(50).IsRequired();
             entity.Property(e => e.NgayCapNhat).HasColumnType("datetime");
+        });
+
+        modelBuilder.Entity<LC_TP_KetQuaPhanTichThan>(entity =>
+        {
+            entity.Property(e => e.Lan1).HasPrecision(6, 2);
+            entity.Property(e => e.Lan2).HasPrecision(6, 2);
+            entity.Property(e => e.Lan3).HasPrecision(6, 2);
+            entity.Property(e => e.Lan4).HasPrecision(6, 2);
+            entity.Property(e => e.Lan5).HasPrecision(6, 2);
+            entity.Property(e => e.Lan6).HasPrecision(6, 2);
+            entity.HasIndex(e => new { e.PhieuCaId, e.Scope });
+        });
+
+        modelBuilder.Entity<LC_TP_SuCoTrongCa>(entity =>
+        {
+            entity.Property(e => e.PhieuId).HasColumnName("PhieuID");
+            entity.HasIndex(e => new { e.PhieuId, e.Scope });
         });
 
         OnModelCreatingPartial(modelBuilder);
