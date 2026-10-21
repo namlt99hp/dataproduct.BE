@@ -2,53 +2,6 @@
 
 namespace dataproduct.api.DTOs.NMLC
 {
-    // ─── Nhóm tháp than ───
-
-    public class NhomThapThanDto
-    {
-        public int Id { get; set; }
-        public int Scope { get; set; }
-        public string Ma { get; set; } = string.Empty;
-        public string? Ten { get; set; }
-        public int? ThuTu { get; set; }
-    }
-
-    public class NhomThapThanSaveDto
-    {
-        // Xưởng: 1 = Thành phẩm 1, 2 = Thành phẩm 2
-        [Required]
-        public int Scope { get; set; }
-
-        [Required, MaxLength(10)]
-        public string Ma { get; set; } = string.Empty;
-
-        [MaxLength(50)]
-        public string? Ten { get; set; }
-
-        public int? ThuTu { get; set; }
-    }
-
-    // ─── Phễu ───
-
-    public class PheuDto
-    {
-        public int Id { get; set; }
-        public int ThapThanId { get; set; }
-        public string? TenThapThan { get; set; }
-        public string? TenPheu { get; set; }
-    }
-
-    public class PheuSaveDto
-    {
-        [Required]
-        public int ThapThanId { get; set; }
-
-        [MaxLength(100)]
-        public string? TenPheu { get; set; }
-    }
-
-    // ─── Chi tiết tháp than ───
-
     public class ChiTietThapThanDto
     {
         public int Id { get; set; }
