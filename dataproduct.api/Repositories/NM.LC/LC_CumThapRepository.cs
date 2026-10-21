@@ -1,5 +1,6 @@
 using dataproduct.api.DTOs.NM.LC;
 using dataproduct.api.Models;
+using dataproduct.api.Models.NMLC;
 using Microsoft.EntityFrameworkCore;
 
 namespace dataproduct.api.Repositories.NM.LC

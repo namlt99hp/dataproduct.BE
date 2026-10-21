@@ -43,7 +43,7 @@ namespace dataproduct.api.Services.NMLC
         {
             var entity = await _repo.UpdateNhomAsync(new LC_CumThap
             {
-                Id = id,
+                ID = id,
                 Scope = dto.Scope,
                 Ma = dto.Ma,
                 Ten = dto.Ten,
@@ -160,14 +160,14 @@ namespace dataproduct.api.Services.NMLC
         // ─── Lookup & mapping ───
 
         private async Task<Dictionary<int, string>> GetTenNhomMapAsync()
-            => (await _repo.GetAllNhomAsync()).ToDictionary(x => x.Id, x => x.Ten ?? string.Empty);
+            => (await _repo.GetAllNhomAsync()).ToDictionary(x => x.ID, x => x.Ten ?? string.Empty);
 
         private async Task<Dictionary<int, LC_TP_ThapThan_Pheu>> GetPheuMapAsync()
             => (await _repo.GetAllPheuAsync()).ToDictionary(x => x.Id);
 
         private static NhomThapThanDto ToDto(LC_CumThap e) => new()
         {
-            Id = e.Id,
+            Id = e.ID,
             Scope = e.Scope,
             Ma = e.Ma,
             Ten = e.Ten,

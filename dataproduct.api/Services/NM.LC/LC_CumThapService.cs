@@ -1,5 +1,6 @@
 using dataproduct.api.DTOs.NM.LC;
 using dataproduct.api.Models;
+using dataproduct.api.Models.NMLC;
 using dataproduct.api.Repositories.NM.LC;
 
 namespace dataproduct.api.Services.NM.LC

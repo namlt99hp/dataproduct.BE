@@ -29,19 +29,19 @@ namespace dataproduct.api.Repositories.NMLC
             if (scope.HasValue)
                 query = query.Where(x => x.Scope == scope.Value);
 
-            return await query.OrderBy(x => x.ThuTu).ThenBy(x => x.Id).ToListAsync();
+            return await query.OrderBy(x => x.ThuTu).ThenBy(x => x.ID).ToListAsync();
         }
 
         public async Task<LC_CumThap?> GetNhomByIdAsync(int id)
         {
             return await _context.LC_CumThap
                 .AsNoTracking()
-                .FirstOrDefaultAsync(x => x.Id == id && !x.IsDelete);
+                .FirstOrDefaultAsync(x => x.ID == id && !x.IsDelete);
         }
 
         public async Task<bool> NhomExistsAsync(int id)
         {
-            return await _context.LC_CumThap.AnyAsync(x => x.Id == id && !x.IsDelete);
+            return await _context.LC_CumThap.AnyAsync(x => x.ID == id && !x.IsDelete);
         }
 
         public async Task<LC_CumThap> AddNhomAsync(LC_CumThap entity)
@@ -56,7 +56,7 @@ namespace dataproduct.api.Repositories.NMLC
         public async Task<LC_CumThap?> UpdateNhomAsync(LC_CumThap entity)
         {
             var existing = await _context.LC_CumThap
-                .FirstOrDefaultAsync(x => x.Id == entity.Id && !x.IsDelete);
+                .FirstOrDefaultAsync(x => x.ID == entity.ID && !x.IsDelete);
             if (existing == null) return null;
 
             existing.Scope = entity.Scope;
@@ -70,7 +70,7 @@ namespace dataproduct.api.Repositories.NMLC
         public async Task<bool> DeleteNhomAsync(int id)
         {
             var existing = await _context.LC_CumThap
-                .FirstOrDefaultAsync(x => x.Id == id && !x.IsDelete);
+                .FirstOrDefaultAsync(x => x.ID == id && !x.IsDelete);
             if (existing == null) return false;
 
             existing.IsDelete = true;
@@ -86,7 +86,7 @@ namespace dataproduct.api.Repositories.NMLC
             // Join cụm tháp: chỉ lấy phễu của cụm còn hiệu lực, lọc được theo xưởng (scope)
             var query =
                 from p in _context.LC_TP_ThapThan_Pheu.AsNoTracking()
-                join c in _context.LC_CumThap.AsNoTracking() on p.ThapThanId equals c.Id
+                join c in _context.LC_CumThap.AsNoTracking() on p.ThapThanId equals c.ID
                 where !p.IsDelete && !c.IsDelete
                 select new { p, c };
 
@@ -101,7 +101,7 @@ namespace dataproduct.api.Repositories.NMLC
 
             // Thứ tự: cụm tháp (ThuTu), rồi thứ tự phễu (ThuTu; chưa đặt thì xếp cuối), rồi tên phễu
             return await query
-                .OrderBy(x => x.c.ThuTu).ThenBy(x => x.c.Id)
+                .OrderBy(x => x.c.ThuTu).ThenBy(x => x.c.ID)
                 .ThenBy(x => x.p.ThuTu ?? int.MaxValue).ThenBy(x => x.p.TenPheu).ThenBy(x => x.p.Id)
                 .Select(x => x.p)
                 .ToListAsync();
