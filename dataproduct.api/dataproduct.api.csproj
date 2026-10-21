@@ -28,6 +28,8 @@
 
   <ItemGroup>
     <Folder Include="Data\" />
+    <Folder Include="DTOs\NMLC\" />
+    <Folder Include="Repositories\NMLC\" />
   </ItemGroup>
 
 </Project>
