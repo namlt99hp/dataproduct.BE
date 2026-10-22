@@ -48,8 +48,7 @@ namespace dataproduct.api.Services
 
         public async Task<TKVVNguyenVatLieuDto> AddNvlAsync(CreateTKVVNguyenVatLieuDto dto)
         {
-            var scopeNumber = TKVV_BBSLRepository.ResolveScopeNumber(dto.Scope);
-            var scopeValue = scopeNumber?.ToString();
+            var scopeValue = ResolveScopeValue(dto.Scope);
             var entity = new TKVV_NguyenVatLieu
             {
                 MaBM = dto.MaBM,
@@ -59,7 +58,7 @@ namespace dataproduct.api.Services
                 GhiChu = dto.GhiChu,
                 TrangThai = true,
                 Scope = scopeValue,
-                TenScope = dto.TenScope ?? (scopeNumber.HasValue ? TKVV_BBSLRepository.ResolveScopeCode(scopeNumber.Value) : null),
+                TenScope = dto.TenScope,
             };
             var result = await _repo.AddNvlAsync(entity);
             return MapNvl(result);
@@ -67,8 +66,7 @@ namespace dataproduct.api.Services
 
         public async Task<TKVVNguyenVatLieuDto?> UpdateNvlAsync(int id, UpdateTKVVNguyenVatLieuDto dto)
         {
-            var scopeNumber = TKVV_BBSLRepository.ResolveScopeNumber(dto.Scope);
-            var scopeValue = scopeNumber?.ToString();
+            var scopeValue = ResolveScopeValue(dto.Scope);
             var entity = new TKVV_NguyenVatLieu
             {
                 MaBM = dto.MaBM,
@@ -78,10 +76,22 @@ namespace dataproduct.api.Services
                 TrangThai = dto.TrangThai,
                 GhiChu = dto.GhiChu,
                 Scope = scopeValue,
-                TenScope = dto.TenScope ?? (scopeNumber.HasValue ? TKVV_BBSLRepository.ResolveScopeCode(scopeNumber.Value) : null),
+                TenScope = dto.TenScope,
             };
             var result = await _repo.UpdateNvlAsync(id, entity);
             return result == null ? null : MapNvl(result);
+        }
+
+        // Chuyển scope đơn hoặc đa (vd: "1,2,3" hay "TK1,VV2") → chuỗi số "1,2,3"
+        private static string? ResolveScopeValue(string? scope)
+        {
+            if (string.IsNullOrWhiteSpace(scope)) return null;
+            var parts = scope.Split(',')
+                             .Select(s => s.Trim())
+                             .Where(s => s.Length > 0)
+                             .Select(p => TKVV_BBSLRepository.ResolveScopeNumber(p)?.ToString() ?? p)
+                             .ToList();
+            return parts.Count > 0 ? string.Join(",", parts) : null;
         }
 
         public Task<bool> DeleteNvlAsync(int id) => _repo.DeleteNvlAsync(id);

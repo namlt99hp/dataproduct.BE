@@ -163,6 +163,21 @@ namespace dataproduct.api.Controllers.NMTKVV
             }
         }
 
+        [HttpPost("{id}/clear-bbgn")]
+        public async Task<IActionResult> ClearBbgn(long id)
+        {
+            var row = await _context.TKVV_BaoCaoSanLuongChiPhi.FindAsync(id);
+            if (row == null) return NotFound();
+            row.ID_CT_BBGN = null;
+            row.ThanhPhamL1 = null;
+            row.ThanhPhamL2 = null;
+            row.ThanhPhamL3 = null;
+            row.ThanhPham_Note = null;
+            row.IsAdjusted = false;
+            await _context.SaveChangesAsync();
+            return NoContent();
+        }
+
         [HttpPost("refresh-bbgn-batch")]
         public async Task<IActionResult> RefreshBbgnBatch([FromBody] RefreshBbgnBatchRequestDto request)
         {

@@ -67,6 +67,13 @@ namespace dataproduct.api.Repositories
             await _context.SaveChangesAsync();
         }
 
+        public async Task ReplaceInSoTheoDoiAsync(int oldId, int? newId)
+        {
+            await _context.CtdSoTheoDois
+                .Where(x => x.IdDonTrongPhoi == oldId)
+                .ExecuteUpdateAsync(s => s.SetProperty(x => x.IdDonTrongPhoi, newId));
+        }
+
         public Task<bool> ExistsAsync(string macPhoi, string? mac, string? kichThuoc, int? excludeId = null)
         {
             var query = _context.DonTrongPhois.Where(x =>

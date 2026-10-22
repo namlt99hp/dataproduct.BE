@@ -613,6 +613,7 @@ namespace dataproduct.api.Repositories
         Task AddAsync(DonTrongPhoi entity);
         Task UpdateAsync(DonTrongPhoi entity);
         Task DeleteAsync(int id);
+        Task ReplaceInSoTheoDoiAsync(int oldId, int? newId);
         Task<bool> ExistsAsync(string macPhoi, string? mac, string? kichThuoc, int? excludeId = null);
         Task SyncMaVatTuAsync();
         Task<bool> ToggleLockAsync(int id);

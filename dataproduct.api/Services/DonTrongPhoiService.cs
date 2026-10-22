@@ -52,10 +52,11 @@ namespace dataproduct.api.Services
             return true;
         }
 
-        public async Task<bool> DeleteAsync(int id)
+        public async Task<bool> DeleteAsync(int id, int? replacementId = null)
         {
             var existing = await _repo.GetByIdAsync(id);
             if (existing == null) return false;
+            await _repo.ReplaceInSoTheoDoiAsync(id, replacementId);
             await _repo.DeleteAsync(id);
             return true;
         }

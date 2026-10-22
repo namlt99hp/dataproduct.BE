@@ -81,9 +81,9 @@ namespace dataproduct.api.Controllers
         }
 
         [HttpDelete("{id}")]
-        public async Task<IActionResult> Delete(int id)
+        public async Task<IActionResult> Delete(int id, [FromQuery] int? replacementId)
         {
-            var ok = await _service.DeleteAsync(id);
+            var ok = await _service.DeleteAsync(id, replacementId);
             return ok ? NoContent() : NotFound();
         }
 

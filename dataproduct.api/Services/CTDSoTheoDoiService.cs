@@ -391,10 +391,9 @@ namespace dataproduct.api.Services
             var ws1 = workbook.Worksheet(1);
             ws1.Cell("C3").Value = $"Từ ngày: {fromDate:dd/MM/yyyy} đến ngày: {toDate:dd/MM/yyyy}";
 
-            // Chèn cột "Mã vật tư" sau cột "Kích thước" (col 7 → col 8 mới)
-            ws1.Column(8).InsertColumnsBefore(1);
-            ws1.Cell(5, 8).CopyFrom(ws1.Cell(5, 7));
-            ws1.Cell(5, 8).Value = "Mã vật tư";
+            // Thêm cột "Mã vật tư" vào cuối (col 17)
+            ws1.Cell(5, 17).CopyFrom(ws1.Cell(5, 16));
+            ws1.Cell(5, 17).Value = "Mã vật tư";
 
             var stdRows = (from p in phieus
                            join d in soTheoDoiList on p.Idphieu equals d.Idphieu
@@ -425,16 +424,16 @@ namespace dataproduct.api.Services
                     _ => row.d.LoaiPhoi?.ToString()
                 };
                 ws1.Cell(r, 7).Value = row.d.KichThuoc;
-                ws1.Cell(r, 8).Value = maVatTu;         // Mã vật tư (mới)
-                ws1.Cell(r, 9).Value = row.d.PhoiRaLo;
-                ws1.Cell(r, 10).Value = row.d.PhoiHoiLo;
-                ws1.Cell(r, 11).Value = row.d.PhoiRaSan;
-                ws1.Cell(r, 12).Value = row.d.PhoiPheCn;
-                ws1.Cell(r, 13).Value = row.d.LoaiSp;
-                ws1.Cell(r, 14).Value = row.d.MacThep;
-                ws1.Cell(r, 15).Value = row.d.LenhSanXuat;
-                ws1.Cell(r, 16).Value = row.p.SoPhieu;
-                ws1.Cell(r, 17).Value = TinhTrangToText(row.p.TinhTrang);
+                ws1.Cell(r, 8).Value = row.d.PhoiRaLo;
+                ws1.Cell(r, 9).Value = row.d.PhoiHoiLo;
+                ws1.Cell(r, 10).Value = row.d.PhoiRaSan;
+                ws1.Cell(r, 11).Value = row.d.PhoiPheCn;
+                ws1.Cell(r, 12).Value = row.d.LoaiSp;
+                ws1.Cell(r, 13).Value = row.d.MacThep;
+                ws1.Cell(r, 14).Value = row.d.LenhSanXuat;
+                ws1.Cell(r, 15).Value = row.p.SoPhieu;
+                ws1.Cell(r, 16).Value = TinhTrangToText(row.p.TinhTrang);
+                ws1.Cell(r, 17).Value = maVatTu;        // Mã vật tư (cuối)
             }
 
             if (stdRows.Count > 0)
