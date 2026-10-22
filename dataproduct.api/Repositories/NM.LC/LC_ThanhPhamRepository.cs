@@ -321,5 +321,128 @@ namespace dataproduct.api.Repositories.NMLC
                 .Where(x => x.PhieuId == phieuId && x.Scope == scope)
                 .ExecuteDeleteAsync();
         }
+
+        // ─── Tiêu hao (LC_TP_TieuHao / LC_TP_DanhMucTieuHao) ───
+
+        public async Task<List<LC_TP_NhomTieuHao>> GetNhomTieuHaoAsync()
+        {
+            return await _context.LC_TP_NhomTieuHao.AsNoTracking().OrderBy(x => x.Id).ToListAsync();
+        }
+
+        public async Task<List<LC_TP_DanhMucTieuHao>> GetDanhMucTieuHaoAsync()
+        {
+            return await _context.LC_TP_DanhMucTieuHao
+                .AsNoTracking()
+                .Where(x => !x.IsDelete)
+                .OrderBy(x => x.ThuTu).ThenBy(x => x.Id)
+                .ToListAsync();
+        }
+
+        public async Task<List<LC_TP_TieuHao>> GetTieuHaoAsync(Guid phieuId, int scope)
+        {
+            // Sắp theo thứ tự hạng mục trong danh mục để FE hiển thị đúng thứ tự
+            return await (from t in _context.LC_TP_TieuHao.AsNoTracking()
+                          join d in _context.LC_TP_DanhMucTieuHao.AsNoTracking() on t.HangMucId equals d.Id
+                          where t.PhieuId == phieuId && t.Scope == scope
+                          orderby d.ThuTu, d.Id
+                          select t).ToListAsync();
+        }
+
+        public async Task<List<LC_TP_TieuHao>> ReplaceTieuHaoAsync(
+            Guid phieuId, int scope, IEnumerable<LC_TP_TieuHao> entities)
+        {
+            var list = entities.ToList();
+
+            await using var tx = await _context.Database.BeginTransactionAsync();
+
+            var old = await _context.LC_TP_TieuHao
+                .Where(x => x.PhieuId == phieuId && x.Scope == scope)
+                .ToListAsync();
+            _context.LC_TP_TieuHao.RemoveRange(old);
+
+            foreach (var e in list)
+            {
+                e.Id = 0;
+                e.PhieuId = phieuId;
+                e.Scope = scope;
+            }
+            _context.LC_TP_TieuHao.AddRange(list);
+
+            await _context.SaveChangesAsync();
+            await tx.CommitAsync();
+            return list;
+        }
+
+        public async Task<int> DeleteTieuHaoAsync(Guid phieuId, int scope)
+        {
+            return await _context.LC_TP_TieuHao
+                .Where(x => x.PhieuId == phieuId && x.Scope == scope)
+                .ExecuteDeleteAsync();
+        }
+
+        // ─── Chất lượng cốc (LC_TP_ChiTieuCoc / LC_TP_TCNBCoc / LC_TP_ChatLuongCocCa) ───
+
+        public async Task<List<LC_TP_ChiTieuCoc>> GetChiTieuCocAsync(bool includeDeleted = false)
+        {
+            var query = _context.LC_TP_ChiTieuCoc.AsNoTracking();
+            if (!includeDeleted) query = query.Where(x => !x.IsDelete);
+            return await query.OrderBy(x => x.ThuTu).ThenBy(x => x.Id).ToListAsync();
+        }
+
+        public async Task<List<LC_TP_TCNBCoc>> GetTcnbCocAsync()
+        {
+            return await _context.LC_TP_TCNBCoc.AsNoTracking().OrderBy(x => x.ChiTieuId).ThenBy(x => x.Loai).ToListAsync();
+        }
+
+        public async Task<List<LC_TP_ChatLuongCocCa>> GetChatLuongCocAsync(Guid phieuId, int scope)
+        {
+            return await _context.LC_TP_ChatLuongCocCa
+                .AsNoTracking()
+                .Where(x => x.PhieuId == phieuId && x.Scope == scope)
+                .OrderBy(x => x.ChiTieuId).ThenBy(x => x.Loai).ThenBy(x => x.Lan)
+                .ToListAsync();
+        }
+
+        public async Task<List<LC_TP_ChatLuongCocCa>> ReplaceChatLuongCocAsync(
+            Guid phieuId, int scope, IEnumerable<LC_TP_ChatLuongCocCa> entities)
+        {
+            var list = entities.ToList();
+
+            await using var tx = await _context.Database.BeginTransactionAsync();
+
+            var old = await _context.LC_TP_ChatLuongCocCa
+                .Where(x => x.PhieuId == phieuId && x.Scope == scope)
+                .ToListAsync();
+            _context.LC_TP_ChatLuongCocCa.RemoveRange(old);
+
+            foreach (var e in list)
+            {
+                e.Id = 0;
+                e.PhieuId = phieuId;
+                e.Scope = scope;
+            }
+            _context.LC_TP_ChatLuongCocCa.AddRange(list);
+
+            await _context.SaveChangesAsync();
+            await tx.CommitAsync();
+            return list;
+        }
+
+        public async Task<int> DeleteChatLuongCocAsync(Guid phieuId, int scope)
+        {
+            return await _context.LC_TP_ChatLuongCocCa
+                .Where(x => x.PhieuId == phieuId && x.Scope == scope)
+                .ExecuteDeleteAsync();
+        }
+
+        public async Task<List<int>> FindHangMucKhongTonTaiAsync(IEnumerable<int> hangMucIds)
+        {
+            var ids = hangMucIds.Distinct().ToList();
+            var existing = await _context.LC_TP_DanhMucTieuHao
+                .Where(x => ids.Contains(x.Id))
+                .Select(x => x.Id)
+                .ToListAsync();
+            return ids.Except(existing).ToList();
+        }
     }
 }

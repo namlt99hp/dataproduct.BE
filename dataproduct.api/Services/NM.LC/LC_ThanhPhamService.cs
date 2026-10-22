@@ -316,5 +316,158 @@ namespace dataproduct.api.Services.NMLC
             TgKetThuc = d.TgKetThuc,
             NhanLuc = d.NhanLuc
         };
+
+        // ─── Chất lượng cốc ───
+
+        private const int SoLanChatLuongCoc = 6;
+
+        public async Task<ChatLuongCocDanhMucDto> GetDanhMucChatLuongCocAsync()
+        {
+            var chiTieu = await _repo.GetChiTieuCocAsync();
+            var ids = chiTieu.Select(x => x.Id).ToHashSet();
+            var tcnb = (await _repo.GetTcnbCocAsync()).Where(x => ids.Contains(x.ChiTieuId));
+
+            return new ChatLuongCocDanhMucDto
+            {
+                ChiTieu = chiTieu.Select(x => new ChiTieuCocDto
+                {
+                    Id = x.Id,
+                    Ten = x.Ten,
+                    DonVi = x.DonVi,
+                    CoPhanLoai = x.CoPhanLoai,
+                    ThuTu = x.ThuTu
+                }).ToList(),
+                Tcnb = tcnb.Select(x => new TcnbCocDto
+                {
+                    ChiTieuId = x.ChiTieuId,
+                    Loai = x.Loai,
+                    GiaTriTCNB = x.GiaTriTCNB
+                }).ToList()
+            };
+        }
+
+        public async Task<List<ChatLuongCocDto>> GetChatLuongCocAsync(Guid phieuId, int scope)
+        {
+            var list = await _repo.GetChatLuongCocAsync(phieuId, scope);
+            return list.Select(ToDto).ToList();
+        }
+
+        // Lưu toàn bộ kết quả chất lượng cốc của phiếu + scope. Không tự đánh giá: DatYeuCau là
+        // "Đánh giá" người dùng chọn cho từng chỉ tiêu (FE gửi kèm trên các dòng của chỉ tiêu đó).
+        // Lỗi nghiệp vụ → InvalidOperationException.
+        public async Task<List<ChatLuongCocDto>> SaveChatLuongCocAsync(
+            Guid phieuId, int scope, List<ChatLuongCocSaveDto> items)
+        {
+            var chiTieuById = (await _repo.GetChiTieuCocAsync(includeDeleted: true)).ToDictionary(x => x.Id);
+
+            for (var i = 0; i < items.Count; i++)
+            {
+                var it = items[i];
+                if (!chiTieuById.ContainsKey(it.ChiTieuId))
+                    throw new InvalidOperationException($"Dòng {i + 1}: chỉ tiêu {it.ChiTieuId} không tồn tại.");
+                if (it.Lan < 1 || it.Lan > SoLanChatLuongCoc)
+                    throw new InvalidOperationException(
+                        $"Dòng {i + 1}: lần đo phải từ 1 đến {SoLanChatLuongCoc}.");
+            }
+
+            // Mỗi chỉ tiêu chỉ có 1 giá trị cho mỗi lần đo
+            var trung = items.GroupBy(x => (x.ChiTieuId, x.Lan)).FirstOrDefault(g => g.Count() > 1);
+            if (trung != null)
+                throw new InvalidOperationException(
+                    $"Trùng kết quả đo: chỉ tiêu {chiTieuById[trung.Key.ChiTieuId].Ten}, lần {trung.Key.Lan}.");
+
+            // Loai (NOT NULL trong DB) không còn ý nghĩa vì không phân loại tự động → 0 = chưa phân loại
+            var entities = items.Select(d => new LC_TP_ChatLuongCocCa
+            {
+                ChiTieuId = d.ChiTieuId,
+                Loai = 0,
+                Lan = d.Lan,
+                GiaTri = d.GiaTri,
+                DatYeuCau = d.DatYeuCau
+            }).ToList();
+
+            var saved = await _repo.ReplaceChatLuongCocAsync(phieuId, scope, entities);
+            return saved.Select(ToDto).ToList();
+        }
+
+        public Task<int> DeleteChatLuongCocAsync(Guid phieuId, int scope) => _repo.DeleteChatLuongCocAsync(phieuId, scope);
+
+        private static ChatLuongCocDto ToDto(LC_TP_ChatLuongCocCa e) => new()
+        {
+            Id = e.Id,
+            PhieuId = e.PhieuId,
+            Scope = e.Scope,
+            ChiTieuId = e.ChiTieuId,
+            Loai = e.Loai,
+            Lan = e.Lan,
+            GiaTri = e.GiaTri,
+            DatYeuCau = e.DatYeuCau
+        };
+
+        // ─── Tiêu hao ───
+
+        public async Task<List<DanhMucTieuHaoDto>> GetDanhMucTieuHaoAsync()
+        {
+            var list = await _repo.GetDanhMucTieuHaoAsync();
+            var tenNhom = (await _repo.GetNhomTieuHaoAsync()).ToDictionary(n => n.Id, n => n.Ten);
+            return list.Select(x => new DanhMucTieuHaoDto
+            {
+                Id = x.Id,
+                Ten = x.Ten,
+                NhomId = x.NhomId,
+                TenNhom = x.NhomId.HasValue && tenNhom.TryGetValue(x.NhomId.Value, out var t) ? t : null,
+                DonVi = x.DonVi,
+                DonViTieuHao = x.DonViTieuHao,
+                ThuTu = x.ThuTu
+            }).ToList();
+        }
+
+        public async Task<List<TieuHaoDto>> GetTieuHaoAsync(Guid phieuId, int scope)
+        {
+            var list = await _repo.GetTieuHaoAsync(phieuId, scope);
+            return list.Select(ToDto).ToList();
+        }
+
+        // Lưu toàn bộ tiêu hao của phiếu (xóa cũ, thêm mới). Lỗi nghiệp vụ → InvalidOperationException.
+        public async Task<List<TieuHaoDto>> SaveTieuHaoAsync(Guid phieuId, int scope, List<TieuHaoSaveDto> items)
+        {
+            var trung = items.GroupBy(x => x.HangMucId).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
+            if (trung.Count > 0)
+                throw new InvalidOperationException(
+                    $"Hạng mục bị trùng trong phiếu: {string.Join(", ", trung)}.");
+
+            var khongTonTai = await _repo.FindHangMucKhongTonTaiAsync(items.Select(x => x.HangMucId));
+            if (khongTonTai.Count > 0)
+                throw new InvalidOperationException(
+                    $"Hạng mục không tồn tại trong danh mục: {string.Join(", ", khongTonTai)}.");
+
+            var saved = await _repo.ReplaceTieuHaoAsync(phieuId, scope, items.Select(d => new LC_TP_TieuHao
+            {
+                HangMucId = d.HangMucId,
+                ChiSoDauCa = d.ChiSoDauCa,
+                ChiSoCuoiCa = d.ChiSoCuoiCa,
+                TrongCa = d.TrongCa,
+                TongNhaMay = d.TongNhaMay,
+                LuyKe = d.LuyKe,
+                TieuHaoTrenTan = d.TieuHaoTrenTan
+            }).ToList());
+            return saved.Select(ToDto).ToList();
+        }
+
+        public Task<int> DeleteTieuHaoAsync(Guid phieuId, int scope) => _repo.DeleteTieuHaoAsync(phieuId, scope);
+
+        private static TieuHaoDto ToDto(LC_TP_TieuHao e) => new()
+        {
+            Id = e.Id,
+            PhieuId = e.PhieuId,
+            Scope = e.Scope,
+            HangMucId = e.HangMucId,
+            ChiSoDauCa = e.ChiSoDauCa,
+            ChiSoCuoiCa = e.ChiSoCuoiCa,
+            TrongCa = e.TrongCa,
+            TongNhaMay = e.TongNhaMay,
+            LuyKe = e.LuyKe,
+            TieuHaoTrenTan = e.TieuHaoTrenTan
+        };
     }
 }

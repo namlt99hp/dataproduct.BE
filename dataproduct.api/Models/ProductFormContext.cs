@@ -159,6 +159,12 @@ public partial class ProductFormContext : DbContext
     public virtual DbSet<LC_TP_ThapThan_ChiTiet> LC_TP_ThapThan_ChiTiet { get; set; }
     public virtual DbSet<LC_TP_KetQuaPhanTichThan> LC_TP_KetQuaPhanTichThan { get; set; }
     public virtual DbSet<LC_TP_SuCoTrongCa> LC_TP_SuCoTrongCa { get; set; }
+    public virtual DbSet<LC_TP_ChiTieuCoc> LC_TP_ChiTieuCoc { get; set; }
+    public virtual DbSet<LC_TP_TCNBCoc> LC_TP_TCNBCoc { get; set; }
+    public virtual DbSet<LC_TP_ChatLuongCocCa> LC_TP_ChatLuongCocCa { get; set; }
+    public virtual DbSet<LC_TP_NhomTieuHao> LC_TP_NhomTieuHao { get; set; }
+    public virtual DbSet<LC_TP_DanhMucTieuHao> LC_TP_DanhMucTieuHao { get; set; }
+    public virtual DbSet<LC_TP_TieuHao> LC_TP_TieuHao { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -1319,6 +1325,29 @@ public partial class ProductFormContext : DbContext
         {
             entity.Property(e => e.PhieuId).HasColumnName("PhieuID");
             entity.HasIndex(e => new { e.PhieuId, e.Scope });
+        });
+
+        modelBuilder.Entity<LC_TP_TCNBCoc>(entity =>
+        {
+            entity.Property(e => e.GiaTriTCNB).HasPrecision(6, 2);
+            entity.HasIndex(e => new { e.ChiTieuId, e.Loai }).IsUnique();
+        });
+
+        modelBuilder.Entity<LC_TP_ChatLuongCocCa>(entity =>
+        {
+            entity.Property(e => e.GiaTri).HasPrecision(6, 2);
+            entity.HasIndex(e => new { e.PhieuId, e.Scope, e.ChiTieuId, e.Lan }).IsUnique();
+        });
+
+        modelBuilder.Entity<LC_TP_TieuHao>(entity =>
+        {
+            entity.Property(e => e.ChiSoDauCa).HasPrecision(18, 2);
+            entity.Property(e => e.ChiSoCuoiCa).HasPrecision(18, 2);
+            entity.Property(e => e.TrongCa).HasPrecision(18, 2);
+            entity.Property(e => e.TongNhaMay).HasPrecision(18, 2);
+            entity.Property(e => e.LuyKe).HasPrecision(18, 2);
+            entity.Property(e => e.TieuHaoTrenTan).HasPrecision(18, 4);
+            entity.HasIndex(e => new { e.PhieuId, e.Scope, e.HangMucId }).IsUnique();
         });
 
         OnModelCreatingPartial(modelBuilder);
