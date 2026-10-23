@@ -296,44 +296,73 @@ namespace dataproduct.api.Repositories.NMTKVV
 
             var existing = await _context.TKVV_NVL_SiloMapping
                 .Where(m => m.SiloID.HasValue && siloIds.Contains(m.SiloID.Value)
-                         && m.Ca == ca && m.NgaySX == ngaySX && m.TrangThai)
+                         && m.Ca == ca && m.NgaySX == ngaySX && m.TrangThai && m.Scope == scope)
                 .ToListAsync();
 
-            if (existing.Count > 0) return existing;
+            // Đã đủ mapping cho tất cả silo đang hoạt động → không cần clone thêm
+            if (existing.Count >= siloIds.Count) return existing;
 
-            var historical = await _context.TKVV_NVL_SiloMapping
+            var existingSiloIds = existing
+                .Where(m => m.SiloID.HasValue)
+                .Select(m => m.SiloID!.Value)
+                .ToHashSet();
+
+            // Ca kề trước: Ca 1 (ngày) ← Ca 2 (đêm) hôm trước; Ca 2 (đêm) ← Ca 1 (ngày) cùng ngày
+            var prevNgaySX = ca == 1 ? ngaySX.AddDays(-1) : ngaySX;
+            var prevCa = ca == 1 ? 2 : 1;
+
+            var toClone = await _context.TKVV_NVL_SiloMapping
                 .Where(m => m.SiloID.HasValue && siloIds.Contains(m.SiloID.Value)
-                         && m.NgaySX <= ngaySX && m.TrangThai)
+                         && m.NgaySX == prevNgaySX && m.Ca == prevCa && m.TrangThai)
                 .ToListAsync();
 
-            if (historical.Count == 0) return new List<TKVV_NVL_SiloMapping>();
-
-            var nearest = historical
-                .OrderByDescending(m => m.NgaySX)
-                .ThenByDescending(m => m.Ca)
-                .First();
-
-            var toClone = historical
-                .Where(m => m.NgaySX == nearest.NgaySX && m.Ca == nearest.Ca)
-                .ToList();
-
-            var cloned = toClone.Select(src => new TKVV_NVL_SiloMapping
+            // Fallback: ca kề trước chưa có → tìm ca gần nhất trước (ngaySX, ca) hiện tại
+            if (toClone.Count == 0)
             {
-                MaBM            = src.MaBM,
-                NguyenVatLieuID = src.NguyenVatLieuID,
-                Scope           = src.Scope,
-                SiloID          = src.SiloID,
-                Ca              = ca,
-                NgaySX          = ngaySX,
-                ThuTu           = src.ThuTu,
-                GhiChu          = src.GhiChu,
-                TrangThai       = true,
-                NgayCapNhat     = DateTime.Now,
-            }).ToList();
+                var historical = await _context.TKVV_NVL_SiloMapping
+                    .Where(m => m.SiloID.HasValue && siloIds.Contains(m.SiloID.Value)
+                             && (m.NgaySX < prevNgaySX || (m.NgaySX == prevNgaySX && m.Ca < prevCa))
+                             && m.TrangThai)
+                    .ToListAsync();
 
-            _context.TKVV_NVL_SiloMapping.AddRange(cloned);
-            await _context.SaveChangesAsync();
-            return cloned;
+                if (historical.Count == 0) return existing;
+
+                var nearest = historical
+                    .OrderByDescending(m => m.NgaySX)
+                    .ThenByDescending(m => m.Ca)
+                    .First();
+
+                toClone = historical
+                    .Where(m => m.NgaySX == nearest.NgaySX && m.Ca == nearest.Ca)
+                    .ToList();
+            }
+
+            if (toClone.Count == 0) return existing;
+
+            // Chỉ clone những silo chưa có trong existing
+            var cloned = toClone
+                .Where(src => src.SiloID.HasValue && !existingSiloIds.Contains(src.SiloID.Value))
+                .Select(src => new TKVV_NVL_SiloMapping
+                {
+                    MaBM            = src.MaBM,
+                    NguyenVatLieuID = src.NguyenVatLieuID,
+                    Scope           = src.Scope,
+                    SiloID          = src.SiloID,
+                    Ca              = ca,
+                    NgaySX          = ngaySX,
+                    ThuTu           = src.ThuTu,
+                    GhiChu          = src.GhiChu,
+                    TrangThai       = true,
+                    NgayCapNhat     = DateTime.Now,
+                }).ToList();
+
+            if (cloned.Count > 0)
+            {
+                _context.TKVV_NVL_SiloMapping.AddRange(cloned);
+                await _context.SaveChangesAsync();
+            }
+
+            return existing.Concat(cloned).ToList();
         }
 
         public async Task<TKVV_NVL_SiloMapping?> GetNvlSiloMappingByIdAsync(int id)

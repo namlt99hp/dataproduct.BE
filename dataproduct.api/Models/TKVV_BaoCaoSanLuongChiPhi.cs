@@ -25,6 +25,7 @@ namespace dataproduct.api.Models
         public bool IsAdjusted { get; set; }
         public int? AdjustedBy { get; set; }
         public DateTime? AdjustedDate { get; set; }
+        public decimal? TiLePhanBo { get; set; }
         public DateTime CreatedDate { get; set; }
         public int? CreatedBy { get; set; }
         public DateTime? UpdatedDate { get; set; }

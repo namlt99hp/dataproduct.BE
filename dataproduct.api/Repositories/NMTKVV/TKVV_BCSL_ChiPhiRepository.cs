@@ -250,15 +250,50 @@ namespace dataproduct.api.Repositories.NMTKVV
             // ============================================================
 
             // Lấy từ TKVV_TonSilo, group theo NguyenVatLieuID — tổng Xuat + DoAm đầu tiên có giá trị
-            var tonSiloRows = await _context.TKVV_TonSilo
+            var baseQuery = _context.TKVV_TonSilo
                 .Where(x =>
                     x.NgaySX == request.NgaySX &&
                     x.Ca == caLoad &&
                     x.Scope == request.Scope &&
                     x.NguyenVatLieuID != null &&
-                    !x.IsDelete)
-                .AsNoTracking()
-                .ToListAsync();
+                    !x.IsDelete);
+
+            List<TKVV_TonSilo> tonSiloRows;
+            if (request.Scope == 5 || request.Scope == 6)
+            {
+                // VV scope (5,6) — 2 bước:
+                // Bước 1: load tất cả trừ CAU (bao gồm cả TRON), kèm loại silo
+                var allWithType = await (
+                    from ts in baseQuery
+                    join s in _context.TKVV_Silo on ts.SiloID equals s.ID into siloG
+                    from s in siloG.DefaultIfEmpty()
+                    where s.GhiChu != "CAU"
+                    select new { TonSilo = ts, LoaiSilo = s.GhiChu }
+                ).AsNoTracking().ToListAsync();
+
+                // Bước 2: zero-out tất cả DON, gán DON đầu tiên = tổng Xuat TRON
+                var tronRows = allWithType.Where(r => r.LoaiSilo == "TRON").ToList();
+                var donRows  = allWithType.Where(r => r.LoaiSilo == "DON").ToList();
+
+                var tongXuatTron = tronRows.Sum(r => r.TonSilo.Xuat ?? 0);
+
+                foreach (var don in donRows)
+                    don.TonSilo.Xuat = 0;
+
+                var firstDon = donRows.FirstOrDefault();
+                if (firstDon != null)
+                    firstDon.TonSilo.Xuat = tongXuatTron;
+
+                // Loại TRON — giá trị đã được gộp vào row DON đầu tiên
+                tonSiloRows = allWithType
+                    .Where(r => r.LoaiSilo != "TRON")
+                    .Select(r => r.TonSilo)
+                    .ToList();
+            }
+            else
+            {
+                tonSiloRows = await baseQuery.AsNoTracking().ToListAsync();
+            }
 
             var spCa = tonSiloRows
                 .GroupBy(x => x.NguyenVatLieuID!.Value)
@@ -636,6 +671,15 @@ namespace dataproduct.api.Repositories.NMTKVV
 
         public async Task<LoadDuLieuCanResultDto> GetBaoCaoDataAsync(DateOnly ngaySX, string maBM, int scope, int? caSX = null)
         {
+            var donNvlIds = (scope == 5 || scope == 6)
+                ? (await (
+                    from ts in _context.TKVV_TonSilo
+                    join s in _context.TKVV_Silo on ts.SiloID equals s.ID
+                    where ts.NgaySX == ngaySX && ts.Scope == scope && s.GhiChu == "DON"
+                    select ts.NguyenVatLieuID!.Value
+                  ).Distinct().ToListAsync()).ToHashSet()
+                : new HashSet<int>();
+
             var query = (from r in _context.TKVV_BaoCaoSanLuongChiPhi
                          join nvl in _context.TKVV_NguyenVatLieu on r.NguyenVatLieuID equals nvl.ID into nvlG
                          from nvl in nvlG.DefaultIfEmpty()
@@ -663,6 +707,7 @@ namespace dataproduct.api.Repositories.NMTKVV
                              IsAdjusted = r.IsAdjusted,
                              AdjustedBy = r.AdjustedBy,
                              AdjustedDate = r.AdjustedDate,
+                             TiLePhanBo = r.TiLePhanBo,
                              ID_CT_BBGN = r.ID_CT_BBGN,
                          });
 
@@ -670,6 +715,9 @@ namespace dataproduct.api.Repositories.NMTKVV
                 query = query.Where(x => x.Ca == caSX.Value);
 
             var rows = await query.OrderBy(x => x.Ca).ThenBy(x => x.ThuTu).ThenBy(x => x.NguyenVatLieuID).AsNoTracking().ToListAsync();
+
+            foreach (var row in rows)
+                row.IsDonSilo = donNvlIds.Contains(row.NguyenVatLieuID);
 
             var result = new LoadDuLieuCanResultDto { Table = rows };
             if (caSX is > 0 and <= 2)
@@ -707,11 +755,25 @@ namespace dataproduct.api.Repositories.NMTKVV
                                   IsAdjusted = r.IsAdjusted,
                                   AdjustedBy = r.AdjustedBy,
                                   AdjustedDate = r.AdjustedDate,
+                                  TiLePhanBo = r.TiLePhanBo,
                                   ID_CT_BBGN = r.ID_CT_BBGN,
                               }).AsNoTracking().ToListAsync();
 
-            var result = new LoadDuLieuCanResultDto { Table = rows };
             var first = rows.FirstOrDefault();
+            if (first?.Scope is 5 or 6)
+            {
+                var donNvlIds = (await (
+                    from ts in _context.TKVV_TonSilo
+                    join s in _context.TKVV_Silo on ts.SiloID equals s.ID
+                    where ts.NgaySX == first.NgaySX && ts.Scope == first.Scope && s.GhiChu == "DON"
+                    select ts.NguyenVatLieuID!.Value
+                  ).Distinct().ToListAsync()).ToHashSet();
+
+                foreach (var row in rows)
+                    row.IsDonSilo = donNvlIds.Contains(row.NguyenVatLieuID);
+            }
+
+            var result = new LoadDuLieuCanResultDto { Table = rows };
             if (first?.Scope is > 0 and <= 6)
                 result.TongSanLuong = await GetTongSanLuongDuLieuDtoAsync(first.NgaySX, first.Ca, first.Scope.Value.ToString());
             return result;
@@ -743,6 +805,7 @@ namespace dataproduct.api.Repositories.NMTKVV
 
                     rec.PhieuID = request.PhieuID;
                     rec.KLAm = row.KLAm;
+                    rec.TiLePhanBo = row.TiLePhanBo;
                     // DoAm không cho phép sửa từ BaoCao — luôn giữ giá trị lấy từ TonSilo
                     rec.QuyKho = rec.DoAm.HasValue && rec.KLAm.HasValue
                         ? rec.KLAm.Value * (100 - rec.DoAm.Value) / 100

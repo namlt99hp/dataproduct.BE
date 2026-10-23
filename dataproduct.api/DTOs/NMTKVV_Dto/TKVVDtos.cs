@@ -185,6 +185,8 @@ namespace dataproduct.api.DTOs.NMTKVV_Dto
         public bool IsAdjusted { get; set; }
         public int? AdjustedBy { get; set; }
         public DateTime? AdjustedDate { get; set; }
+        public decimal? TiLePhanBo { get; set; }
+        public bool IsDonSilo { get; set; }
         public int? ID_CT_BBGN { get; set; }
     }
 
@@ -221,6 +223,7 @@ namespace dataproduct.api.DTOs.NMTKVV_Dto
         public decimal? ThanhPhamL2 { get; set; }
         public decimal? ThanhPhamL3 { get; set; }
         public string? GhiChu { get; set; }
+        public decimal? TiLePhanBo { get; set; }
     }
 
     public class SaveBcSlPhieuRequestDto
