@@ -146,10 +146,16 @@ public partial class ProductFormContext : DbContext
     public virtual DbSet<LC_Silo> LC_Silo { get; set; }
     public virtual DbSet<LC_CumThap> LC_CumThap { get; set; }
     public virtual DbSet<LC_CapLieu> LC_CapLieu { get; set; }
-    public virtual DbSet<LC_TonSilo> LC_TonSilo { get; set; }
+    public virtual DbSet<LC_CapLieuTonSilo> LC_CapLieuTonSilo { get; set; }
     public virtual DbSet<LC_KetQuaPhanTich> LC_KetQuaPhanTich { get; set; }
     public virtual DbSet<LC_PhoiTron> LC_PhoiTron { get; set; }
     public virtual DbSet<LC_PhoiTronChiTiet> LC_PhoiTronChiTiet { get; set; }
+    public virtual DbSet<LC_SiloCocTon> LC_SiloCocTon { get; set; }
+    public virtual DbSet<LC_SiloTon> LC_SiloTon { get; set; }
+    public virtual DbSet<LC_XuatCap> LC_XuatCap { get; set; }
+    public virtual DbSet<LC_XuatCapNguon> LC_XuatCapNguon { get; set; }
+    public virtual DbSet<LC_XuatCapDanhMucCum> LC_XuatCapDanhMucCum { get; set; }
+    public virtual DbSet<LC_XuatCapDanhMucChiTiet> LC_XuatCapDanhMucChiTiet { get; set; }
     public virtual DbSet<LG_PB_Map_NvlCVH_LoCao> LG_PB_Map_NvlCVH_LoCao { get; set; }
 
     // NM.NL — kết quả SP, không có PK
@@ -1011,9 +1017,9 @@ public partial class ProductFormContext : DbContext
             entity.Property(e => e.LuyKeQuyKho).HasColumnType("decimal(18, 3)");
             entity.Property(e => e.TonDauKyQuyKho).HasColumnType("decimal(18, 3)");
         });
-        modelBuilder.Entity<LC_TonSilo>(entity =>
+        modelBuilder.Entity<LC_CapLieuTonSilo>(entity =>
         {
-            entity.ToTable("LC_TonSilo");
+            entity.ToTable("LC_CapLieuTonSilo");
             entity.Property(e => e.AmSiloCuoiKy).HasColumnType("decimal(10, 3)");
             entity.Property(e => e.KLAmTonCuoi).HasColumnType("decimal(18, 3)");
             entity.Property(e => e.DoAmSilo).HasColumnType("decimal(9, 4)");
@@ -1047,6 +1053,63 @@ public partial class ProductFormContext : DbContext
             entity.Property(e => e.TyLeThucTe).HasColumnType("decimal(9, 4)");
             entity.Property(e => e.KLQuyKho).HasColumnType("decimal(18, 3)");
             entity.Property(e => e.LuyKeQuyKho).HasColumnType("decimal(18, 3)");
+        });
+        modelBuilder.Entity<LC_SiloCocTon>(entity =>
+        {
+            entity.ToTable("LC_SiloCocTon");
+            entity.Property(e => e.TenCum).HasMaxLength(100);
+            entity.Property(e => e.TenSilo).HasMaxLength(100);
+            entity.Property(e => e.LoaiLieu).HasMaxLength(10);
+            entity.Property(e => e.TenNhapLieu).HasMaxLength(50);
+            entity.Property(e => e.GiaTriTonCuoiCa).HasColumnType("decimal(10, 3)");
+            entity.Property(e => e.KhoiLuongTonCuoiCa).HasColumnType("decimal(18, 3)");
+            entity.Property(e => e.GiaTriTonDauCa).HasColumnType("decimal(10, 3)");
+            entity.Property(e => e.KhoiLuongTonDauCa).HasColumnType("decimal(18, 3)");
+            entity.Property(e => e.ChenhLech1080).HasColumnType("decimal(18, 3)");
+            entity.Property(e => e.ChenhLechDuoi10).HasColumnType("decimal(18, 3)");
+        });
+        modelBuilder.Entity<LC_SiloTon>(entity =>
+        {
+            entity.ToTable("LC_SiloTon");
+            entity.Property(e => e.TenSilo).HasMaxLength(100);
+            entity.Property(e => e.LoaiLieu).HasMaxLength(10);
+            entity.Property(e => e.TenNhapLieu).HasMaxLength(50);
+            entity.Property(e => e.CongThuc).HasMaxLength(1000);
+        });
+        modelBuilder.Entity<LC_XuatCap>(entity =>
+        {
+            entity.ToTable("LC_XuatCap");
+            entity.Property(e => e.TenCan).HasMaxLength(100);
+            entity.Property(e => e.NoiNhan).HasMaxLength(100);
+            entity.Property(e => e.ChiTietLo).HasMaxLength(50);
+            entity.Property(e => e.LoaiCoc).HasMaxLength(50);
+            entity.Property(e => e.NhomTongHop).HasMaxLength(60);
+            entity.Property(e => e.GhiChu).HasMaxLength(300);
+            entity.Property(e => e.KhoiLuongAm).HasColumnType("decimal(18, 3)");
+            entity.Property(e => e.DoAm).HasColumnType("decimal(9, 4)");
+            entity.Property(e => e.TyKhoi).HasColumnType("decimal(9, 4)");
+            entity.Property(e => e.KLQuyKho).HasColumnType("decimal(18, 3)");
+            entity.Property(e => e.TrongCa).HasColumnType("decimal(18, 3)");
+            entity.Property(e => e.LuyKe).HasColumnType("decimal(18, 3)");
+        });
+        modelBuilder.Entity<LC_XuatCapNguon>(entity =>
+        {
+            entity.ToTable("LC_XuatCapNguon");
+            entity.Property(e => e.KhoiLuongGan).HasColumnType("decimal(18, 3)");
+            entity.Property(e => e.DoAmGan).HasColumnType("decimal(9, 4)");
+        });
+        modelBuilder.Entity<LC_XuatCapDanhMucCum>(entity =>
+        {
+            entity.ToTable("LC_XuatCapDanhMucCum");
+            entity.Property(e => e.TenCan).HasMaxLength(100);
+            entity.Property(e => e.TenCum).HasMaxLength(100);
+            entity.Property(e => e.LoaiCoc).HasMaxLength(50);
+            entity.Property(e => e.NhomTongHop).HasMaxLength(60);
+        });
+        modelBuilder.Entity<LC_XuatCapDanhMucChiTiet>(entity =>
+        {
+            entity.ToTable("LC_XuatCapDanhMucChiTiet");
+            entity.Property(e => e.ChiTietLo).HasMaxLength(50);
         });
         modelBuilder.Entity<TKVV_NVL_SiloMapping>(entity =>
         {

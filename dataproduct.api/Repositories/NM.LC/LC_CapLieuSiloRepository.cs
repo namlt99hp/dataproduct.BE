@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace dataproduct.api.Repositories.NM.LC
 {
-    // Tab "Cấp liệu & Silo" của LC_BCSX_XNL_TP — gộp LC_CapLieu + LC_TonSilo (1 dòng/lớp
+    // Tab "Cấp liệu & Silo" của LC_BCSX_XNL_TP — gộp LC_CapLieu + LC_CapLieuTonSilo (1 dòng/lớp
     // liệu, xem TabCapLieuSilo.tsx) + LC_KetQuaPhanTich (Cỡ hạt sau nghiền 1).
     //
     // KHÔNG dùng BmPhieu.DataJson cho tab này (quyết định 2026-10-19 — lưu JSON rủi ro mất
@@ -16,7 +16,7 @@ namespace dataproduct.api.Repositories.NM.LC
     //
     // TÁCH LIỆU (2026-10-21): 1 SiloSo có thể có NHIỀU dòng LC_CapLieu (Stt=1 lớp gốc,
     // Stt>1 lớp tách thêm qua nút "Tách liệu" ở FE) — khoá thật là (ID_Silo, Stt), không
-    // còn giả định 1 dòng/silo như bản trước. LC_TonSilo vẫn đúng 1 dòng/silo (đo vật lý,
+    // còn giả định 1 dòng/silo như bản trước. LC_CapLieuTonSilo vẫn đúng 1 dòng/silo (đo vật lý,
     // không phân biệt lớp) — chỉ áp giá trị tồn-silo (Dto 4 cột AmSiloCuoiKy/KLAmTonCuoi/
     // DoAmSilo/KLTonCuoiQuyKho) cho dòng Stt=1 của mỗi silo.
     public class LC_CapLieuSiloRepository : ILC_CapLieuSiloRepository
@@ -46,7 +46,7 @@ namespace dataproduct.api.Repositories.NM.LC
                 .GroupBy(x => x.ID_Silo)
                 .ToDictionary(g => g.Key, g => g.OrderBy(x => x.Stt).ToList());
 
-            var tonSiloBySilo = await _context.LC_TonSilo.AsNoTracking()
+            var tonSiloBySilo = await _context.LC_CapLieuTonSilo.AsNoTracking()
                 .Where(x => x.IDPhieu == idPhieu)
                 .ToDictionaryAsync(x => x.ID_Silo);
 
@@ -139,7 +139,7 @@ namespace dataproduct.api.Repositories.NM.LC
                 .ToListAsync();
             var existingCapLieuByKey = existingCapLieu.ToDictionary(x => (x.ID_Silo, x.Stt));
 
-            var existingTonSiloBySilo = await _context.LC_TonSilo
+            var existingTonSiloBySilo = await _context.LC_CapLieuTonSilo
                 .Where(x => x.IDPhieu == idPhieu)
                 .ToDictionaryAsync(x => x.ID_Silo);
 
@@ -197,7 +197,7 @@ namespace dataproduct.api.Repositories.NM.LC
                 }
 
                 // Tồn-silo (vật lý, 1 dòng/silo) chỉ nhận giá trị từ lớp Stt=1 — các lớp khác
-                // (Stt>1) không chạm vào LC_TonSilo (FE đã khoá nhập ở các cột này rồi).
+                // (Stt>1) không chạm vào LC_CapLieuTonSilo (FE đã khoá nhập ở các cột này rồi).
                 if (stt != 1) continue;
 
                 // F05a (TP1 only — TP2 dùng F05b, CHƯA có công thức, OQ-03 còn mở cho TP2) +
@@ -215,7 +215,7 @@ namespace dataproduct.api.Repositories.NM.LC
                 }
                 else
                 {
-                    _context.LC_TonSilo.Add(new LC_TonSilo
+                    _context.LC_CapLieuTonSilo.Add(new LC_CapLieuTonSilo
                     {
                         IDPhieu = idPhieu,
                         NgaySX = phieu.NgaySX,
@@ -383,7 +383,7 @@ namespace dataproduct.api.Repositories.NM.LC
 
             foreach (var silo in silos)
             {
-                _context.LC_TonSilo.Add(new LC_TonSilo
+                _context.LC_CapLieuTonSilo.Add(new LC_CapLieuTonSilo
                 {
                     IDPhieu = phieu.Idphieu,
                     NgaySX = phieu.NgaySX,

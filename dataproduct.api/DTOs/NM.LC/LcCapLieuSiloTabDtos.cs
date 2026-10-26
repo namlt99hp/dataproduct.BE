@@ -1,6 +1,6 @@
 namespace dataproduct.api.DTOs.NM.LC
 {
-    // 1 dòng = 1 lớp liệu của 1 silo (gộp LC_CapLieu + LC_TonSilo, khớp layout FE
+    // 1 dòng = 1 lớp liệu của 1 silo (gộp LC_CapLieu + LC_CapLieuTonSilo, khớp layout FE
     // TabCapLieuSilo.tsx — xem comment đầu TabCapLieuSilo.tsx). Từ khi có "Tách liệu"
     // (2026-10-21), 1 SiloSo có thể có NHIỀU dòng (nhiều Stt) — 4 cột tồn-silo
     // (AmSiloCuoiKy/KLAmTonCuoi/DoAmSilo/KLTonCuoiQuyKho) chỉ có giá trị thật ở dòng Stt=1

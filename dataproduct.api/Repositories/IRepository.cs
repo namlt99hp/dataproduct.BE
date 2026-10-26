@@ -1,5 +1,6 @@
 ﻿using dataproduct.api.DTOs;
 using dataproduct.api.DTOs.CTD_Dto;
+using dataproduct.api.DTOs.NM.LC;
 using dataproduct.api.DTOs.NMLG_Dto;
 using dataproduct.api.Models;
 using dataproduct.api.Models.MasterData;
@@ -523,6 +524,13 @@ namespace dataproduct.api.Repositories
         // Dùng chung cho QHLC (idVatTu=470) và Than cốc <10mm (idVatTu=484)
         // SUM(KL_QuyKho_BG) GROUP BY Ca, ID_Xuong_BG WHERE ID_TrangThai_BBGN=1 AND ID_Xuong_BG IN idXuongList (bỏ Kíp)
         Task<List<(int IdXuong, byte? Ca, decimal KhoiLuong)>> GetTongNhanVeAsync(DateTime ngay, int idVatTu, IEnumerable<int> idXuongList);
+
+        // Nguồn dữ liệu Tab Cấp cốc (LC_BCSX_XNL_TP) — NGƯỢC chiều với GetTongNhanVeAsync: cố định
+        // bên GIAO (idXuongBg = 162 TP1 / 163 TP2, hardcode ở LC_XuatCapService.GetNguonBbgnAsync),
+        // trả về RAW từng dòng chi tiết (không gộp) — giống cách BM_11Controller.ExportToExcel liệt
+        // kê. KHÔNG tự phân loại Cụm/Loại (chốt 2026-10-23: người dùng tự gán tay toàn bộ qua
+        // LC_XuatCapNguon, không auto-map). Xem .claude/LuyenCoc/PhanTich_TabCapCoc.md §9.
+        Task<List<LcCapCocNguonBbgnDto>> GetCapCocNguonAsync(DateTime ngay, string ca, int idXuongBg);
     }
 
     public interface IHrc1SlabRepository

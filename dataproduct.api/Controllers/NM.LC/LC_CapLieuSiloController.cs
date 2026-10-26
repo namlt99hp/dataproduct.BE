@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace dataproduct.api.Controllers.NM.LC
 {
     // API riêng cho tab Cấp liệu & Silo — đọc/lưu trực tiếp bảng quan hệ
-    // (LC_CapLieu/LC_TonSilo/LC_KetQuaPhanTich), KHÔNG qua BmPhieu.DataJson.
+    // (LC_CapLieu/LC_CapLieuTonSilo/LC_KetQuaPhanTich), KHÔNG qua BmPhieu.DataJson.
     [ApiController]
     [Route("api/LC_CapLieuSilo")]
     public class LC_CapLieuSiloController : ControllerBase

@@ -5,7 +5,7 @@ namespace dataproduct.api.Repositories.NM.LC
 {
     public interface ILC_CapLieuSiloRepository
     {
-        // Đọc dữ liệu THẬT từ bảng quan hệ (LC_CapLieu/LC_TonSilo/LC_KetQuaPhanTich) — nguồn
+        // Đọc dữ liệu THẬT từ bảng quan hệ (LC_CapLieu/LC_CapLieuTonSilo/LC_KetQuaPhanTich) — nguồn
         // DUY NHẤT cho tab này, KHÔNG qua BmPhieu.DataJson.
         Task<LcCapLieuSiloTabDto> GetTabAsync(Guid idPhieu);
 

@@ -7,7 +7,7 @@ namespace dataproduct.api.Models
     // TP2 dùng F05b, CHƯA triển khai, OQ-03 còn mở riêng cho TP2, giá trị NULL).
     // KLTonCuoiQuyKho: CALCULATED (F01 = KLAmTonCuoi × (100−DoAmSilo)/100) — tự NULL theo TP2
     // vì KLAmTonCuoi NULL ở đó.
-    public class LC_TonSilo
+    public class LC_CapLieuTonSilo
     {
         [Key]
         public int ID { get; set; }
