@@ -699,5 +699,23 @@ namespace dataproduct.api.Repositories
         Task<List<LC_TP_SuCoTrongCa>> ReplaceSuCoAsync(
             Guid phieuId, int scope, IEnumerable<LC_TP_SuCoTrongCa> entities);
         Task<int> DeleteSuCoAsync(Guid phieuId, int scope);
+
+        // Tiêu hao (LC_TP_TieuHao) theo phiếu; danh mục hạng mục (LC_TP_DanhMucTieuHao)
+        Task<List<LC_TP_NhomTieuHao>> GetNhomTieuHaoAsync();
+        Task<List<LC_TP_DanhMucTieuHao>> GetDanhMucTieuHaoAsync();
+        Task<List<LC_TP_TieuHao>> GetTieuHaoAsync(Guid phieuId, int scope);
+        // Thay toàn bộ tiêu hao của phiếu + scope (transaction: xóa cũ, ghi mới)
+        Task<List<LC_TP_TieuHao>> ReplaceTieuHaoAsync(Guid phieuId, int scope, IEnumerable<LC_TP_TieuHao> entities);
+        Task<int> DeleteTieuHaoAsync(Guid phieuId, int scope);
+        // Trả về các HangMucId không tồn tại trong danh mục
+        Task<List<int>> FindHangMucKhongTonTaiAsync(IEnumerable<int> hangMucIds);
+
+        // Chất lượng cốc: danh mục chỉ tiêu (kể cả đã xóa mềm — để kiểm tra dữ liệu cũ), TCNB, kết quả đo theo phiếu + scope
+        Task<List<LC_TP_ChiTieuCoc>> GetChiTieuCocAsync(bool includeDeleted = false);
+        Task<List<LC_TP_TCNBCoc>> GetTcnbCocAsync();
+        Task<List<LC_TP_ChatLuongCocCa>> GetChatLuongCocAsync(Guid phieuId, int scope);
+        Task<List<LC_TP_ChatLuongCocCa>> ReplaceChatLuongCocAsync(
+            Guid phieuId, int scope, IEnumerable<LC_TP_ChatLuongCocCa> entities);
+        Task<int> DeleteChatLuongCocAsync(Guid phieuId, int scope);
     }
 }

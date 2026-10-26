@@ -348,5 +348,92 @@ namespace dataproduct.api.Controllers.NMLC
                 ? NoContent()
                 : NotFound(new { message = "Phiếu không có sự cố để xóa." });
         }
+
+        // =====================================================
+        // 7. CHẤT LƯỢNG CỐC
+        // =====================================================
+
+        // Danh mục chỉ tiêu (kèm hướng đạt) + bảng TCNB theo (chỉ tiêu, loại)
+        [HttpGet("danh-muc-chat-luong-coc")]
+        public async Task<IActionResult> GetDanhMucChatLuongCoc()
+        {
+            return Ok(await _service.GetDanhMucChatLuongCocAsync());
+        }
+
+        [HttpGet("chat-luong-coc")]
+        public async Task<IActionResult> GetChatLuongCoc([FromQuery] Guid phieuId, [FromQuery] int scope)
+        {
+            return Ok(await _service.GetChatLuongCocAsync(phieuId, scope));
+        }
+
+        // Thay thế toàn bộ kết quả chất lượng cốc của phiếu + scope (DatYeuCau = đánh giá người dùng chọn)
+        [HttpPut("chat-luong-coc")]
+        public async Task<IActionResult> ReplaceChatLuongCoc(
+            [FromQuery] Guid phieuId,
+            [FromQuery] int scope,
+            [FromBody] List<ChatLuongCocSaveDto> items)
+        {
+            try
+            {
+                return Ok(await _service.SaveChatLuongCocAsync(phieuId, scope, items));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpDelete("chat-luong-coc")]
+        public async Task<IActionResult> DeleteChatLuongCoc([FromQuery] Guid phieuId, [FromQuery] int scope)
+        {
+            var deleted = await _service.DeleteChatLuongCocAsync(phieuId, scope);
+
+            return deleted > 0
+                ? NoContent()
+                : NotFound(new { message = "Phiếu không có kết quả chất lượng cốc để xóa." });
+        }
+
+        // =====================================================
+        // 6. TIÊU HAO
+        // =====================================================
+
+        [HttpGet("danh-muc-tieu-hao")]
+        public async Task<IActionResult> GetDanhMucTieuHao()
+        {
+            return Ok(await _service.GetDanhMucTieuHaoAsync());
+        }
+
+        [HttpGet("tieu-hao")]
+        public async Task<IActionResult> GetTieuHao([FromQuery] Guid phieuId, [FromQuery] int scope)
+        {
+            return Ok(await _service.GetTieuHaoAsync(phieuId, scope));
+        }
+
+        // Thay thế toàn bộ tiêu hao của phiếu
+        [HttpPut("tieu-hao")]
+        public async Task<IActionResult> ReplaceTieuHao(
+            [FromQuery] Guid phieuId,
+            [FromQuery] int scope,
+            [FromBody] List<TieuHaoSaveDto> items)
+        {
+            try
+            {
+                return Ok(await _service.SaveTieuHaoAsync(phieuId, scope, items));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpDelete("tieu-hao")]
+        public async Task<IActionResult> DeleteTieuHao([FromQuery] Guid phieuId, [FromQuery] int scope)
+        {
+            var deleted = await _service.DeleteTieuHaoAsync(phieuId, scope);
+
+            return deleted > 0
+                ? NoContent()
+                : NotFound(new { message = "Phiếu không có tiêu hao để xóa." });
+        }
     }
 }
