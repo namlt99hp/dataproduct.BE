@@ -20,5 +20,7 @@ public class HRC1BBGNThepLongEnricher : IPhieuSearchEnricher
         // mỗi khi mẻ bị chuyển ca.
         var mes = await _repo.GetMeThepsByMayDucAsync(item.NgaySX, item.Ca.Value, item.Scope.Value);
         item.SoLuongMe = mes.Count;
+        // TrangThaiDuc: 0=chờ xử lý, 1=đã xác nhận, 2=đã chốt — cả 1 và 2 đều coi là máy đúc đã xác nhận mẻ.
+        item.SoLuongXNDuc = mes.Count(m => m.TrangThaiDuc >= 1);
     }
 }

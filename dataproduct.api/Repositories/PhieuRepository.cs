@@ -499,7 +499,7 @@ namespace dataproduct.api.Repositories
             if (request.TinhTrang.HasValue)
                 query = await ApplyTinhTrangFilterAsync(query, request.TinhTrang.Value);
 
-            query = query.OrderByDescending(x => x.NgaySX).ThenByDescending(x => x.Ca);
+            query = query.OrderByDescending(x => x.NgaySX).ThenByDescending(x => x.Ca).ThenBy(x => x.MaBm).ThenByDescending(x => x.Scope);
             // ===== BƯỚC 5: Paging + Assemble (giống hàm cũ) =====
             var totalCount = await query.CountAsync();
             var data = await query.Skip((request.page - 1) * request.pageSize).Take(request.pageSize).ToListAsync();
