@@ -1,13 +1,13 @@
 namespace dataproduct.api.Models.NMLC
 {
-    // Danh mục "Cụm nhận" (CHA) vùng Cấp cốc — trang quản lý /lc-xuatcapdanhmuc. Xem
-    // .claude/LuyenCoc/PhanTich_TabCapCoc.md §9 (chốt 2026-10-23, lượt 6).
+    // Danh mục "Nơi nhận" (CHA) vùng Cấp cốc — trang quản lý /lc-xuatcapdanhmuc. Xem
+    // .claude/LuyenCoc/PhanTich_TabCapCoc.md §10/§11 (sửa lại 2026-10-26 — tên cũ "Cụm nhận" bị
+    // nhầm, đây thực chất là "Nơi nhận"; "Cụm" THẬT nằm ở LC_XuatCapCum).
     //
-    // 1 Cụm = 1 đơn vị "Nơi nhận" THẬT trên layout Excel (vd 'LG1-CDQ', 'LG1-Ướt', 'Cốc xả bãi')
-    // — đây là đơn vị dùng để GÁN (nguồn BBGN nhiều khi chỉ biết tới mức thô, vd chỉ biết "LG1",
-    // người dùng phải tự quyết định rơi vào Cụm CDQ hay Ướt) và cũng là đơn vị tính Trong ca/Lũy
-    // kế (qua NhomTongHop — nhiều Cụm có thể cùng NhomTongHop nếu Excel merge chung, vd TP1 dòng
-    // 284-295 gộp chung "Cốc xả bãi"+"LG2-TN"+"LG2-CDQ"+"Xuất bán").
+    // 1 Nơi nhận (vd 'LG1-CDQ', 'LG1-Ướt', 'Cốc xả bãi') thuộc đúng 1 Cụm (`ID_Cum`) — đây là đơn
+    // vị dùng để GÁN (nguồn BBGN nhiều khi chỉ biết tới mức thô, vd chỉ biết "LG1", người dùng
+    // phải tự quyết định rơi vào Nơi nhận CDQ hay Ướt) và cũng là đơn vị tính Trong ca/Lũy kế (qua
+    // NhomTongHop — nhiều Nơi nhận có thể cùng NhomTongHop nếu Excel merge chung).
     //
     // ID_PhongBan: field THAM KHẢO PHỤ (FK logic tới PRODUCTDATA.Tbl_PhongBan, không FK cứng) —
     // KHÔNG dùng để nhóm chính (quá thô, 1 phòng ban gồm cả CDQ/Ướt/TN), chỉ hỗ trợ lọc/tham
@@ -18,13 +18,15 @@ namespace dataproduct.api.Models.NMLC
 
         public int Scope { get; set; } // 1=TP1, 2=TP2
 
+        public int ID_Cum { get; set; } // FK logic LC_XuatCapCum.ID — Cụm THẬT (không FK cứng)
+
         public int ThuTu { get; set; }
 
-        public string TenCan { get; set; } = string.Empty; // vd 'Cân BTC8,17 – NM.LC'
+        public string TenCan { get; set; } = string.Empty; // vd 'Cân BTC8,17 – NM.LC' — tham khảo hiển thị, KHÔNG dùng để nhóm
 
-        public string TenCum { get; set; } = string.Empty; // vd 'LG1-CDQ', 'Cốc xả bãi' (= "Nơi nhận" cũ)
+        public string NoiNhan { get; set; } = string.Empty; // vd 'LG1-CDQ', 'Cốc xả bãi' (đổi tên từ TenCum)
 
-        public string LoaiCoc { get; set; } = string.Empty;
+        public int ID_LoaiCoc { get; set; } // FK logic LC_XuatCapLoaiCoc.ID (đổi từ text tự do)
 
         public string NhomTongHop { get; set; } = string.Empty;
 

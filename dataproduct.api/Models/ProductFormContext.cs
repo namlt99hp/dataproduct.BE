@@ -156,6 +156,9 @@ public partial class ProductFormContext : DbContext
     public virtual DbSet<LC_XuatCapNguon> LC_XuatCapNguon { get; set; }
     public virtual DbSet<LC_XuatCapDanhMucCum> LC_XuatCapDanhMucCum { get; set; }
     public virtual DbSet<LC_XuatCapDanhMucChiTiet> LC_XuatCapDanhMucChiTiet { get; set; }
+    public virtual DbSet<LC_XuatCapCum> LC_XuatCapCum { get; set; }
+    public virtual DbSet<LC_XuatCapLoaiCoc> LC_XuatCapLoaiCoc { get; set; }
+    public virtual DbSet<LC_XuatCapLoaiNhan> LC_XuatCapLoaiNhan { get; set; }
     public virtual DbSet<LG_PB_Map_NvlCVH_LoCao> LG_PB_Map_NvlCVH_LoCao { get; set; }
 
     // NM.NL — kết quả SP, không có PK
@@ -1108,14 +1111,29 @@ public partial class ProductFormContext : DbContext
         {
             entity.ToTable("LC_XuatCapDanhMucCum");
             entity.Property(e => e.TenCan).HasMaxLength(100);
-            entity.Property(e => e.TenCum).HasMaxLength(100);
-            entity.Property(e => e.LoaiCoc).HasMaxLength(50);
+            entity.Property(e => e.NoiNhan).HasMaxLength(100);
             entity.Property(e => e.NhomTongHop).HasMaxLength(60);
         });
         modelBuilder.Entity<LC_XuatCapDanhMucChiTiet>(entity =>
         {
             entity.ToTable("LC_XuatCapDanhMucChiTiet");
             entity.Property(e => e.ChiTietLo).HasMaxLength(50);
+        });
+        modelBuilder.Entity<LC_XuatCapCum>(entity =>
+        {
+            entity.ToTable("LC_XuatCapCum");
+            entity.Property(e => e.Ma).HasMaxLength(10);
+            entity.Property(e => e.Ten).HasMaxLength(50);
+        });
+        modelBuilder.Entity<LC_XuatCapLoaiCoc>(entity =>
+        {
+            entity.ToTable("LC_XuatCapLoaiCoc");
+            entity.Property(e => e.Ten).HasMaxLength(50);
+        });
+        modelBuilder.Entity<LC_XuatCapLoaiNhan>(entity =>
+        {
+            entity.ToTable("LC_XuatCapLoaiNhan");
+            entity.Property(e => e.Ten).HasMaxLength(50);
         });
         modelBuilder.Entity<TKVV_NVL_SiloMapping>(entity =>
         {

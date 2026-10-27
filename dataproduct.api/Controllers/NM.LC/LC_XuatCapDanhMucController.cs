@@ -29,6 +29,24 @@ namespace dataproduct.api.Controllers.NM.LC
             return Ok(await _service.GetPhongBanOptionsAsync());
         }
 
+        [HttpGet("cum-options")]
+        public async Task<IActionResult> GetCumOptions([FromQuery] int? scope)
+        {
+            return Ok(await _service.GetCumOptionsAsync(scope));
+        }
+
+        [HttpGet("loaicoc-options")]
+        public async Task<IActionResult> GetLoaiCocOptions()
+        {
+            return Ok(await _service.GetLoaiCocOptionsAsync());
+        }
+
+        [HttpGet("loainhan-options")]
+        public async Task<IActionResult> GetLoaiNhanOptions()
+        {
+            return Ok(await _service.GetLoaiNhanOptionsAsync());
+        }
+
         [HttpPost("cum")]
         public async Task<IActionResult> AddCum([FromBody] CreateLcXuatCapDanhMucCumDto dto)
         {

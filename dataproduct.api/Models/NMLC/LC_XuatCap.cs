@@ -13,6 +13,12 @@ namespace dataproduct.api.Models.NMLC
     // ExportToExcel, KHÔNG gộp sẵn) vào đúng slot qua LC_XuatCap_Nguon; KhoiLuongAm/DoAm của slot
     // là SUM/trung bình trọng số từ các dòng đã gán (hoặc nhập tay thẳng nếu không có nguồn BBGN
     // tương ứng, ví dụ "ca trước"/"xả ôtô"/"CSR62%").
+    //
+    // SỬA 2026-10-26: KHÔNG còn Initializer sinh sẵn toàn bộ slot lúc tạo phiếu — bảng này giờ
+    // THƯA (sparse), 1 dòng chỉ tồn tại SAU KHI người dùng nhập tay hoặc gán 1 nguồn BBGN vào
+    // đúng slot đó ("mỗi phiếu sẽ gán thôi"). Khoá 1 slot ổn định là ID_DanhMucChiTiet (snapshot),
+    // KHÔNG còn ThuTu (ThuTu giờ chỉ là field hiển thị, không unique). Xem
+    // .claude/LuyenCoc/PhanTich_TabCapCoc.md §10/§11, LC_XuatCapRepository.GetByPhieuAsync.
     public class LC_XuatCap
     {
         public int ID { get; set; }
@@ -25,7 +31,14 @@ namespace dataproduct.api.Models.NMLC
 
         public int Scope { get; set; } // 1=TP1, 2=TP2 (khớp BmPhieu.Scope)
 
-        public int ThuTu { get; set; } // thứ tự hiển thị theo layout cố định (LcXuatCapLayoutSeed)
+        // SNAPSHOT FK logic LC_XuatCapDanhMucChiTiet.ID — KHOÁ 1 SLOT ổn định, không phụ thuộc
+        // thứ tự sinh dòng (khác ThuTu). UNIQUE (IDPhieu, ID_DanhMucChiTiet).
+        public int ID_DanhMucChiTiet { get; set; }
+
+        // SNAPSHOT FK logic LC_XuatCapCum.ID — Cụm THẬT (dùng render Card ngoài cùng ở FE).
+        public int? ID_Cum { get; set; }
+
+        public int ThuTu { get; set; } // snapshot thứ tự hiển thị — KHÔNG còn là khoá UNIQUE
 
         public string TenCan { get; set; } = string.Empty; // SNAPSHOT, vd "Cân BTC8,17 – NM.LC"
 

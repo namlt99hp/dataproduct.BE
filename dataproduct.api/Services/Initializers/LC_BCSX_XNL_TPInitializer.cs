@@ -11,25 +11,23 @@ namespace dataproduct.api.Services.Initializers
     // Và tab Tồn cốc silo: copy forward TOÀN BỘ danh sách cụm/silo từ phiếu liền trước (phiếu
     // đầu tiên của Scope để trống, người dùng tự thêm) — xem
     // LC_SiloCocTonRepository.InitializeLC_SiloCocTonAsync.
-    // Và tab Cấp cốc: phiếu đầu tiên của Scope sinh slot từ LcXuatCapLayoutSeed (cố định), phiếu
-    // sau copy forward cấu trúc từ phiếu liền trước — xem LC_XuatCapRepository.InitializeLC_XuatCapAsync.
+    // Tab Cấp cốc KHÔNG có bước init riêng (bỏ 2026-10-26, theo yêu cầu người dùng — "không cần
+    // Initialize khi tạo phiếu mới, mỗi phiếu sẽ gán thôi") — slot sinh LAZY khi người dùng nhập/
+    // gán, xem LC_XuatCapRepository.EnsureSlotAsync + .claude/LuyenCoc/PhanTich_TabCapCoc.md §10/§11.
     public class LC_BCSX_XNL_TPInitializer : IPhieuJsonInitializer
     {
         private readonly ILC_CapLieuSiloRepository _capLieuSiloRepo;
         private readonly ILC_PhoiTronRepository _phoiTronRepo;
         private readonly ILC_SiloCocTonRepository _siloCocTonRepo;
-        private readonly ILC_XuatCapRepository _xuatCapRepo;
 
         public LC_BCSX_XNL_TPInitializer(
             ILC_CapLieuSiloRepository capLieuSiloRepo,
             ILC_PhoiTronRepository phoiTronRepo,
-            ILC_SiloCocTonRepository siloCocTonRepo,
-            ILC_XuatCapRepository xuatCapRepo)
+            ILC_SiloCocTonRepository siloCocTonRepo)
         {
             _capLieuSiloRepo = capLieuSiloRepo;
             _phoiTronRepo = phoiTronRepo;
             _siloCocTonRepo = siloCocTonRepo;
-            _xuatCapRepo = xuatCapRepo;
         }
 
         public bool CanHandle(string? maBm)
@@ -43,7 +41,6 @@ namespace dataproduct.api.Services.Initializers
             await _capLieuSiloRepo.InitializeLC_BCSX_XNL_TPAsync(phieu);
             await _phoiTronRepo.InitializeLC_BCSX_XNL_TP_PhoiTronAsync(phieu);
             await _siloCocTonRepo.InitializeLC_SiloCocTonAsync(phieu);
-            await _xuatCapRepo.InitializeLC_XuatCapAsync(phieu);
             return new List<string>();
         }
     }

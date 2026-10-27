@@ -19,6 +19,15 @@ namespace dataproduct.api.Services.NM.LC
         public Task<List<LcPhongBanOptionDto>> GetPhongBanOptionsAsync()
             => _repo.GetPhongBanOptionsAsync();
 
+        public Task<List<LcXuatCapCumDto>> GetCumOptionsAsync(int? scope)
+            => _repo.GetCumOptionsAsync(scope);
+
+        public Task<List<LcXuatCapLoaiDto>> GetLoaiCocOptionsAsync()
+            => _repo.GetLoaiCocOptionsAsync();
+
+        public Task<List<LcXuatCapLoaiDto>> GetLoaiNhanOptionsAsync()
+            => _repo.GetLoaiNhanOptionsAsync();
+
         public async Task<(LC_XuatCapDanhMucCum? Result, string? Error)> AddCumAsync(CreateLcXuatCapDanhMucCumDto dto)
         {
             var error = ValidateCum(dto);
@@ -27,10 +36,11 @@ namespace dataproduct.api.Services.NM.LC
             var entity = new LC_XuatCapDanhMucCum
             {
                 Scope = dto.Scope,
+                ID_Cum = dto.IdCum,
                 ThuTu = dto.ThuTu,
                 TenCan = dto.TenCan.Trim(),
-                TenCum = dto.TenCum.Trim(),
-                LoaiCoc = dto.LoaiCoc.Trim(),
+                NoiNhan = dto.NoiNhan.Trim(),
+                ID_LoaiCoc = dto.IdLoaiCoc,
                 NhomTongHop = dto.NhomTongHop.Trim(),
                 ID_PhongBan = dto.IdPhongBan,
             };
@@ -45,15 +55,16 @@ namespace dataproduct.api.Services.NM.LC
             var entity = new LC_XuatCapDanhMucCum
             {
                 Scope = dto.Scope,
+                ID_Cum = dto.IdCum,
                 ThuTu = dto.ThuTu,
                 TenCan = dto.TenCan.Trim(),
-                TenCum = dto.TenCum.Trim(),
-                LoaiCoc = dto.LoaiCoc.Trim(),
+                NoiNhan = dto.NoiNhan.Trim(),
+                ID_LoaiCoc = dto.IdLoaiCoc,
                 NhomTongHop = dto.NhomTongHop.Trim(),
                 ID_PhongBan = dto.IdPhongBan,
             };
             var result = await _repo.UpdateCumAsync(id, entity);
-            return (result, result == null ? "Không tìm thấy Cụm nhận." : null);
+            return (result, result == null ? "Không tìm thấy Nơi nhận." : null);
         }
 
         public Task<bool> DeleteCumAsync(int id)
@@ -61,13 +72,14 @@ namespace dataproduct.api.Services.NM.LC
 
         public async Task<(LC_XuatCapDanhMucChiTiet? Result, string? Error)> AddChiTietAsync(CreateLcXuatCapDanhMucChiTietDto dto)
         {
-            if (await _repo.GetCumByIdAsync(dto.IdCum) == null) return (null, "Không tìm thấy Cụm nhận.");
+            if (await _repo.GetCumByIdAsync(dto.IdNoiNhan) == null) return (null, "Không tìm thấy Nơi nhận.");
 
             var entity = new LC_XuatCapDanhMucChiTiet
             {
-                ID_Cum = dto.IdCum,
+                ID_NoiNhan = dto.IdNoiNhan,
                 ThuTu = dto.ThuTu,
                 ChiTietLo = string.IsNullOrWhiteSpace(dto.ChiTietLo) ? null : dto.ChiTietLo.Trim(),
+                ID_LoaiNhan = dto.IdLoaiNhan,
             };
             return (await _repo.AddChiTietAsync(entity), null);
         }
@@ -75,7 +87,7 @@ namespace dataproduct.api.Services.NM.LC
         public async Task<(LC_XuatCapDanhMucChiTiet? Result, string? Error)> UpdateChiTietAsync(int id, UpdateLcXuatCapDanhMucChiTietDto dto)
         {
             var chiTietLo = string.IsNullOrWhiteSpace(dto.ChiTietLo) ? null : dto.ChiTietLo.Trim();
-            var result = await _repo.UpdateChiTietAsync(id, dto.ThuTu, chiTietLo);
+            var result = await _repo.UpdateChiTietAsync(id, dto.ThuTu, chiTietLo, dto.IdLoaiNhan);
             return (result, result == null ? "Không tìm thấy Chi tiết." : null);
         }
 
@@ -85,8 +97,9 @@ namespace dataproduct.api.Services.NM.LC
         private static string? ValidateCum(CreateLcXuatCapDanhMucCumDto dto)
         {
             if (string.IsNullOrWhiteSpace(dto.TenCan)) return "Tên cân không được để trống.";
-            if (string.IsNullOrWhiteSpace(dto.TenCum)) return "Tên cụm (Nơi nhận) không được để trống.";
-            if (string.IsNullOrWhiteSpace(dto.LoaiCoc)) return "Loại cốc không được để trống.";
+            if (string.IsNullOrWhiteSpace(dto.NoiNhan)) return "Tên Nơi nhận không được để trống.";
+            if (dto.IdCum <= 0) return "Vui lòng chọn Cụm.";
+            if (dto.IdLoaiCoc <= 0) return "Vui lòng chọn Loại cốc.";
             if (string.IsNullOrWhiteSpace(dto.NhomTongHop)) return "Nhóm tổng hợp (Trong ca/Lũy kế) không được để trống.";
             return null;
         }
