@@ -82,8 +82,13 @@ namespace dataproduct.api.Services.NMTKVV
             var nguoiNhanKip = pheDuyets.FirstOrDefault(x => x.CapDuyet == 1);
 
             var caInPhieu = data.Table.FirstOrDefault()?.Ca ?? 1;
-            var rowsNgay = caInPhieu == 1 ? BuildRows(data.Table, 1, out var tongNgay) : "";
-            var rowsDem = caInPhieu == 2 ? BuildRows(data.Table, 2, out var tongDem) : "";
+            (decimal KLAm, decimal QuyKho, decimal L1, decimal L2, decimal L3) tongNgay = default;
+            (decimal KLAm, decimal QuyKho, decimal L1, decimal L2, decimal L3) tongDem = default;
+            string rowsNgay = "", rowsDem = "";
+            if (caInPhieu == 1)
+                rowsNgay = BuildRows(data.Table, 1, out tongNgay);
+            else if (caInPhieu == 2)
+                rowsDem = BuildRows(data.Table, 2, out tongDem);
 
             var logoBase64 = $"data:image/png;base64,{Convert.ToBase64String(await File.ReadAllBytesAsync(Path.Combine(_env.WebRootPath, "imgs", "LogoPDF.png")))}";
             var signGiaoKip = await FormatChuKyBase64Async(nguoiGiaoKip?.ChuKy, nguoiGiaoKip?.TinhTrang == 1);
@@ -101,8 +106,8 @@ namespace dataproduct.api.Services.NMTKVV
                 .Replace("{{NgayKetThuc}}", ngaySau.Day.ToString("00"))
                 .Replace("{{ThangKetThuc}}", ngaySau.Month.ToString("00"))
                 .Replace("{{Nam}}", ngaySau.Year.ToString())
-                // .Replace("{{RowsNgay}}", caInPhieu == 1 ? rowsNgay + BuildTongRow(tongNgay) : "")
-                // .Replace("{{RowsDem}}", caInPhieu == 2 ? rowsDem + BuildTongRow(tongDem) : "")
+                .Replace("{{RowsNgay}}", caInPhieu == 1 ? rowsNgay + BuildTongRow(tongNgay) : "")
+                .Replace("{{RowsDem}}", caInPhieu == 2 ? rowsDem + BuildTongRow(tongDem) : "")
                 .Replace("{{Sign_GiaoKip}}", signGiaoKip)
                 .Replace("{{Sign_NhanKip}}", signNhanKip)
                 .Replace("{{Name_GiaoKip}}", System.Net.WebUtility.HtmlEncode(nguoiGiaoKip?.HoVaTen ?? ""))
