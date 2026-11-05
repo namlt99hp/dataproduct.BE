@@ -16,6 +16,11 @@ namespace dataproduct.api.Repositories.NM.LC
     // nguồn BBGN (GanNguonAsync) vào đúng slot. `GetByPhieuAsync` build FULL layout (mọi Nơi
     // nhận×Chi tiết của Scope) từ DANH MỤC rồi LEFT JOIN các dòng đã có của phiếu — slot chưa có
     // dữ liệu trả về với `Id=0` (ảo), FE vẫn thấy đủ ô để nhập/gán.
+    //
+    // SỬA 2026-11-02 (theo yêu cầu người dùng — "không còn gán rồi mới hiển thị, hiện hết tất cả
+    // Nơi nhận ngay từ đầu để theo dõi Lũy kế theo từng ca"): nhóm (NhomTongHop) CHƯA có dòng nào
+    // của phiếu vẫn trả Lũy kế KẾ THỪA từ ca/phiếu liền trước (Trong ca để null) — xem
+    // `luyKeCarryByNhom` trong GetByPhieuAsync. FE (TabXuatCapCoc.tsx) đã bỏ hẳn filter ẩn slot ảo.
     public class LC_XuatCapRepository : ILC_XuatCapRepository
     {
         private readonly ProductFormContext _context;
@@ -70,6 +75,16 @@ namespace dataproduct.api.Repositories.NM.LC
                 .GroupBy(x => x.NhomTongHop)
                 .ToDictionary(g => g.Key, g => (g.First().TrongCa, g.First().LuyKe));
 
+            // Nhóm CHƯA có dòng nào trong phiếu này (chưa ai nhập/gán) vẫn cần hiện Lũy kế CŨ (kế
+            // thừa từ ca/phiếu liền trước) để theo dõi liên tục theo ca — KHÔNG ghi DB, chỉ tính để
+            // trả DTO. Trong ca giữ `null` ("-", đúng là chưa có số của ca này); tái dùng
+            // ComputeLuyKeAsync (truyền TrongCa=0 để lấy base kế thừa + mốc reset Ca1/ngày1).
+            var missingNhoms = noiNhans.Select(n => n.NhomTongHop).Distinct()
+                .Where(n => !trongCaByNhom.ContainsKey(n)).ToList();
+            var luyKeCarryByNhom = new Dictionary<string, decimal?>();
+            foreach (var nhom in missingNhoms)
+                luyKeCarryByNhom[nhom] = await ComputeLuyKeAsync(idPhieu, scope, phieu.NgaySX, phieu.Ca, nhom, 0m);
+
             var phongBanIds = noiNhans.Where(x => x.ID_PhongBan != null).Select(x => x.ID_PhongBan!.Value).Distinct().ToList();
             var tenPhongBanById = phongBanIds.Count == 0
                 ? new Dictionary<int, string?>()
@@ -98,7 +113,9 @@ namespace dataproduct.api.Repositories.NM.LC
                         continue;
                     }
 
-                    var (trongCa, luyKe) = trongCaByNhom.TryGetValue(nn.NhomTongHop, out var t) ? t : (null, null);
+                    var (trongCa, luyKe) = trongCaByNhom.TryGetValue(nn.NhomTongHop, out var t)
+                        ? t
+                        : (null, luyKeCarryByNhom.GetValueOrDefault(nn.NhomTongHop));
                     result.Add(new LcXuatCapSlotDto
                     {
                         Id = 0, // slot ẢO — chưa ai nhập/gán gì cho phiếu này

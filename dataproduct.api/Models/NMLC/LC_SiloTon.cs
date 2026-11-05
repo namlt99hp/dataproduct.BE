@@ -17,6 +17,10 @@ namespace dataproduct.api.Models.NMLC
 
         public string CongThuc { get; set; } = string.Empty;
 
+        // FK logic LC_TP_CumSanXuat.Id — cụm SẢN XUẤT (1,2,5/3,4...), NULL = dùng chung 2 cụm.
+        // Phục vụ công thức "Sản lượng cốc" — xem SECTION 21/25 migration.
+        public int? ID_CumSanXuat { get; set; }
+
         public bool IsDelete { get; set; }
 
         public DateTime NgayTao { get; set; }

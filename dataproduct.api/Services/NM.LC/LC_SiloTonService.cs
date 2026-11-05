@@ -34,6 +34,7 @@ namespace dataproduct.api.Services.NM.LC
                 LoaiLieu = dto.LoaiLieu,
                 TenNhapLieu = string.IsNullOrWhiteSpace(dto.TenNhapLieu) ? "Chiều cao" : dto.TenNhapLieu.Trim(),
                 CongThuc = dto.CongThuc.Trim(),
+                ID_CumSanXuat = dto.IdCumSanXuat,
             };
             return (await _repo.AddAsync(entity), null);
         }
@@ -50,6 +51,7 @@ namespace dataproduct.api.Services.NM.LC
                 LoaiLieu = dto.LoaiLieu,
                 TenNhapLieu = string.IsNullOrWhiteSpace(dto.TenNhapLieu) ? "Chiều cao" : dto.TenNhapLieu.Trim(),
                 CongThuc = dto.CongThuc.Trim(),
+                ID_CumSanXuat = dto.IdCumSanXuat,
             };
             var result = await _repo.UpdateAsync(id, entity);
             return (result, result == null ? "Không tìm thấy Silo tồn." : null);

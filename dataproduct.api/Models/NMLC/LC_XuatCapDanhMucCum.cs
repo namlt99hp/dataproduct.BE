@@ -26,6 +26,10 @@ namespace dataproduct.api.Models.NMLC
 
         public string NoiNhan { get; set; } = string.Empty; // vd 'LG1-CDQ', 'Cốc xả bãi' (đổi tên từ TenCum)
 
+        // FK logic LC_TP_CumSanXuat.Id — cụm SẢN XUẤT (1,2,5/3,4...), NULL = dùng chung 2 cụm.
+        // KHÁC ID_Cum (cụm "nơi nhận" của Cấp cốc) — xem SECTION 21/26 migration.
+        public int? ID_CumSanXuat { get; set; }
+
         public int ID_LoaiCoc { get; set; } // FK logic LC_XuatCapLoaiCoc.ID (đổi từ text tự do)
 
         public string NhomTongHop { get; set; } = string.Empty;

@@ -1,6 +1,7 @@
 ﻿using dataproduct.api.DTOs;
 using dataproduct.api.DTOs.CTD_Dto;
 using dataproduct.api.DTOs.NM.LC;
+using dataproduct.api.DTOs.NMLC;
 using dataproduct.api.DTOs.NMLG_Dto;
 using dataproduct.api.Models;
 using dataproduct.api.Models.MasterData;
@@ -675,16 +676,25 @@ namespace dataproduct.api.Repositories
         Task<LC_TP_ThapThan_Pheu?> UpdatePheuAsync(LC_TP_ThapThan_Pheu entity);
         Task<bool> DeletePheuAsync(int id);
 
-        // Chi tiết
-        Task<List<LC_TP_ThapThan_ChiTiet>> GetChiTietAsync(DateTime? ngaySx = null, int? ca = null, int? pheuId = null);
-        Task<LC_TP_ThapThan_ChiTiet?> GetChiTietByIdAsync(int id);
-        Task<LC_TP_ThapThan_ChiTiet> AddChiTietAsync(LC_TP_ThapThan_ChiTiet entity);
-        Task<List<LC_TP_ThapThan_ChiTiet>> AddRangeChiTietAsync(IEnumerable<LC_TP_ThapThan_ChiTiet> entities);
-        Task<LC_TP_ThapThan_ChiTiet?> UpdateChiTietAsync(LC_TP_ThapThan_ChiTiet entity);
-        Task<bool> DeleteChiTietAsync(int id);
-        // Thay toàn bộ chi tiết của một ngày + ca (dùng khi lưu phiếu)
-        Task<List<LC_TP_ThapThan_ChiTiet>> ReplaceChiTietByNgayCaAsync(
-            DateTime ngaySx, int ca, IEnumerable<LC_TP_ThapThan_ChiTiet> entities);
+        // Tab Tháp/Phễu — API by-phieu riêng (KHÔNG qua DataJson), xem LC_TP_TonPheu/LC_TP_CapThap.
+        Task<ThapPheuTabDto> GetThapPheuTabAsync(Guid idPhieu);
+        Task<ThapPheuTabDto> SaveThapPheuTabAsync(Guid idPhieu, ThapPheuTabSaveDto dto);
+        Task<ThapPheuTabDto> RefreshThapPheuTuCaTruocAsync(Guid idPhieu);
+        Task InitializeThapPheuAsync(BmPhieu phieu);
+
+        // Danh mục Nơi nhận (Bụi cốc)
+        Task<List<LC_TP_BuiCocNoiNhan>> GetAllBuiCocNoiNhanAsync(bool includeDeleted = false);
+        Task<LC_TP_BuiCocNoiNhan?> GetBuiCocNoiNhanByIdAsync(int id);
+        Task<LC_TP_BuiCocNoiNhan> AddBuiCocNoiNhanAsync(LC_TP_BuiCocNoiNhan entity);
+        Task<LC_TP_BuiCocNoiNhan?> UpdateBuiCocNoiNhanAsync(LC_TP_BuiCocNoiNhan entity);
+        Task<bool> DeleteBuiCocNoiNhanAsync(int id);
+
+        // Tab Bụi cốc (Sản lượng/Tồn/Xuất) — API by-phieu riêng, TP1 only. Xem LC_TP_BuiCoc/
+        // LC_TP_BuiCocXuat.
+        Task<BuiCocTabDto> GetBuiCocTabAsync(Guid idPhieu);
+        Task<BuiCocTabDto> SaveBuiCocTabAsync(Guid idPhieu, BuiCocTabSaveDto dto);
+        Task<BuiCocTabDto> RefreshBuiCocTuCaTruocAsync(Guid idPhieu);
+        Task InitializeBuiCocAsync(BmPhieu phieu);
 
         // Kết quả phân tích than
         Task<List<LC_TP_KetQuaPhanTichThan>> GetKetQuaPhanTichAsync(Guid phieuCaId, int scope);

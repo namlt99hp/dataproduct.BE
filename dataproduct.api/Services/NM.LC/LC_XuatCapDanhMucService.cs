@@ -1,4 +1,4 @@
-using dataproduct.api.DTOs.NM.LC;
+﻿using dataproduct.api.DTOs.NM.LC;
 using dataproduct.api.Models.NMLC;
 using dataproduct.api.Repositories.NM.LC;
 
@@ -43,6 +43,7 @@ namespace dataproduct.api.Services.NM.LC
                 ID_LoaiCoc = dto.IdLoaiCoc,
                 NhomTongHop = dto.NhomTongHop.Trim(),
                 ID_PhongBan = dto.IdPhongBan,
+                ID_CumSanXuat = dto.IdCumSanXuat,
             };
             return (await _repo.AddCumAsync(entity), null);
         }
@@ -62,6 +63,7 @@ namespace dataproduct.api.Services.NM.LC
                 ID_LoaiCoc = dto.IdLoaiCoc,
                 NhomTongHop = dto.NhomTongHop.Trim(),
                 ID_PhongBan = dto.IdPhongBan,
+                ID_CumSanXuat = dto.IdCumSanXuat,
             };
             var result = await _repo.UpdateCumAsync(id, entity);
             return (result, result == null ? "Không tìm thấy Nơi nhận." : null);
@@ -105,3 +107,4 @@ namespace dataproduct.api.Services.NM.LC
         }
     }
 }
+

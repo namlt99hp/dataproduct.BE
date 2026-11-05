@@ -160,102 +160,133 @@ namespace dataproduct.api.Controllers.NMLC
         }
 
         // =====================================================
-        // 3. DỮ LIỆU THÁP THAN
+        // 3. TAB THÁP/PHỄU — API by-phieu riêng, KHÔNG qua DataJson (xem LC_TP_TonPheu/
+        // LC_TP_CapThap, LC_ThanhPhamRepository). Mirror pattern LC_PhoiTronController.
         // =====================================================
 
-
-        // =====================================================
-        // 3. CHI TIẾT THÁP THAN
-        // =====================================================
-
-        [HttpGet("chi-tiet-thap-than")]
-        public async Task<IActionResult> GetChiTietThapThan(
-            [FromQuery] DateTime? ngaySx,
-            [FromQuery] int? ca,
-            [FromQuery] int? pheuId)
+        [HttpGet("thap-pheu/by-phieu/{idPhieu:guid}")]
+        public async Task<IActionResult> GetThapPheuByPhieu(Guid idPhieu)
         {
-            var result = await _service.GetChiTietAsync(
-                ngaySx, ca, pheuId);
-
-            return Ok(result);
-        }
-
-        [HttpGet("chi-tiet-thap-than/{id}")]
-        public async Task<IActionResult> GetChiTietThapThanById(int id)
-        {
-            var result = await _service.GetChiTietByIdAsync(id);
-
-            return result == null
-                ? NotFound(new
-                {
-                    message = $"Không tìm thấy chi tiết tháp than ID = {id}."
-                })
-                : Ok(result);
-        }
-
-        [HttpPost("chi-tiet-thap-than")]
-        public async Task<IActionResult> CreateChiTietThapThan(
-            [FromBody] ChiTietThapThanSaveDto dto)
-        {
-            var result = await _service.AddChiTietAsync(dto);
-
-            if (result == null)
+            try
             {
-                return BadRequest(new
-                {
-                    message = "Phễu được tham chiếu không tồn tại."
-                });
+                return Ok(await _service.GetThapPheuTabAsync(idPhieu));
             }
-
-            return CreatedAtAction(
-                nameof(GetChiTietThapThanById),
-                new { id = result.Id },
-                result);
+            catch (InvalidOperationException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
         }
 
-        [HttpPut("chi-tiet-thap-than/{id}")]
-        public async Task<IActionResult> UpdateChiTietThapThan(
-            int id,
-            [FromBody] ChiTietThapThanSaveDto dto)
+        [HttpPut("thap-pheu/by-phieu/{idPhieu:guid}")]
+        public async Task<IActionResult> SaveThapPheuByPhieu(Guid idPhieu, [FromBody] ThapPheuTabSaveDto dto)
         {
-            var result = await _service.UpdateChiTietAsync(id, dto);
+            try
+            {
+                return Ok(await _service.SaveThapPheuTabAsync(idPhieu, dto));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
 
+        // "Làm mới" — tính lại Tồn đầu (Phễu) + Lũy kế cấp lên tháp/nạp lò (Tháp) theo dữ
+        // liệu MỚI NHẤT của kíp liền trước, không nhận input FE — xem LC_PhoiTronController.
+        [HttpPost("thap-pheu/by-phieu/{idPhieu:guid}/lam-moi")]
+        public async Task<IActionResult> RefreshThapPheuByPhieu(Guid idPhieu)
+        {
+            try
+            {
+                return Ok(await _service.RefreshThapPheuTuCaTruocAsync(idPhieu));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        // =====================================================
+        // 3b. BỤI CỐC (Sản lượng/Tồn/Xuất) — gộp vào tab Tháp/Phễu theo yêu cầu, TP1 ONLY.
+        // Xem LC_TP_BuiCoc/LC_TP_BuiCocXuat, LC_ThanhPhamRepository.
+        // =====================================================
+
+        [HttpGet("bui-coc-noi-nhan")]
+        public async Task<IActionResult> GetBuiCocNoiNhan()
+        {
+            return Ok(await _service.GetAllBuiCocNoiNhanAsync());
+        }
+
+        [HttpGet("bui-coc-noi-nhan/{id}")]
+        public async Task<IActionResult> GetBuiCocNoiNhanById(int id)
+        {
+            var result = await _service.GetBuiCocNoiNhanByIdAsync(id);
             return result == null
-                ? NotFound(new
-                {
-                    message = "Không tìm thấy chi tiết tháp than hoặc phễu được tham chiếu."
-                })
+                ? NotFound(new { message = $"Không tìm thấy nơi nhận ID = {id}." })
                 : Ok(result);
         }
 
-        [HttpDelete("chi-tiet-thap-than/{id}")]
-        public async Task<IActionResult> DeleteChiTietThapThan(int id)
+        [HttpPost("bui-coc-noi-nhan")]
+        public async Task<IActionResult> CreateBuiCocNoiNhan([FromBody] BuiCocNoiNhanSaveDto dto)
         {
-            var deleted = await _service.DeleteChiTietAsync(id);
+            var result = await _service.AddBuiCocNoiNhanAsync(dto);
+            return CreatedAtAction(nameof(GetBuiCocNoiNhanById), new { id = result.Id }, result);
+        }
 
+        [HttpPut("bui-coc-noi-nhan/{id}")]
+        public async Task<IActionResult> UpdateBuiCocNoiNhan(int id, [FromBody] BuiCocNoiNhanSaveDto dto)
+        {
+            var result = await _service.UpdateBuiCocNoiNhanAsync(id, dto);
+            return result == null
+                ? NotFound(new { message = $"Không tìm thấy nơi nhận ID = {id}." })
+                : Ok(result);
+        }
+
+        [HttpDelete("bui-coc-noi-nhan/{id}")]
+        public async Task<IActionResult> DeleteBuiCocNoiNhan(int id)
+        {
+            var deleted = await _service.DeleteBuiCocNoiNhanAsync(id);
             return deleted
                 ? NoContent()
-                : NotFound(new
-                {
-                    message = $"Không tìm thấy chi tiết tháp than ID = {id}."
-                });
+                : NotFound(new { message = $"Không tìm thấy nơi nhận ID = {id}." });
         }
 
-        [HttpPut("chi-tiet-thap-than/theo-ngay-ca")]
-        public async Task<IActionResult> ReplaceChiTietThapThanTheoNgayCa(
-            [FromQuery] DateTime ngaySx,
-            [FromQuery] int ca,
-            [FromBody] List<ChiTietThapThanSaveDto> items)
+        [HttpGet("bui-coc/by-phieu/{idPhieu:guid}")]
+        public async Task<IActionResult> GetBuiCocByPhieu(Guid idPhieu)
         {
-            var result = await _service.SaveChiTietNgayCaAsync(
-                ngaySx, ca, items);
+            try
+            {
+                return Ok(await _service.GetBuiCocTabAsync(idPhieu));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+        }
 
-            return result == null
-                ? BadRequest(new
-                {
-                    message = "Không thể lưu dữ liệu. Vui lòng kiểm tra các phễu được tham chiếu."
-                })
-                : Ok(result);
+        [HttpPut("bui-coc/by-phieu/{idPhieu:guid}")]
+        public async Task<IActionResult> SaveBuiCocByPhieu(Guid idPhieu, [FromBody] BuiCocTabSaveDto dto)
+        {
+            try
+            {
+                return Ok(await _service.SaveBuiCocTabAsync(idPhieu, dto));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpPost("bui-coc/by-phieu/{idPhieu:guid}/lam-moi")]
+        public async Task<IActionResult> RefreshBuiCocByPhieu(Guid idPhieu)
+        {
+            try
+            {
+                return Ok(await _service.RefreshBuiCocTuCaTruocAsync(idPhieu));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         // =====================================================

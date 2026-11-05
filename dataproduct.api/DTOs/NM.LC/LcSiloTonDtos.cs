@@ -10,6 +10,9 @@ namespace dataproduct.api.DTOs.NM.LC
         public string LoaiLieu { get; set; } = string.Empty;
         public string TenNhapLieu { get; set; } = string.Empty;
         public string CongThuc { get; set; } = string.Empty;
+        // FK logic LC_TP_CumSanXuat.Id — cụm SẢN XUẤT (1,2,5/3,4...), NULL = dùng chung 2 cụm.
+        // Phục vụ công thức "Sản lượng cốc" — xem LC_SanLuongCocRepository.
+        public int? IdCumSanXuat { get; set; }
         public DateTime NgayTao { get; set; }
     }
 
@@ -20,6 +23,7 @@ namespace dataproduct.api.DTOs.NM.LC
         public string LoaiLieu { get; set; } = string.Empty;
         public string? TenNhapLieu { get; set; }
         public string CongThuc { get; set; } = string.Empty;
+        public int? IdCumSanXuat { get; set; }
     }
 
     public class UpdateLcSiloTonDto : CreateLcSiloTonDto

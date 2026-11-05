@@ -103,67 +103,77 @@ namespace dataproduct.api.Services.NMLC
         public Task<bool> DeletePheuAsync(int id)
             => _repo.DeletePheuAsync(id);
 
-        // ─── Chi tiết tháp than ───
+        // ─── Tab Tháp/Phễu — API by-phieu riêng, xem LC_ThanhPhamRepository ───
 
-        public async Task<List<ChiTietThapThanDto>> GetChiTietAsync(
-            DateTime? ngaySx = null, int? ca = null, int? pheuId = null)
+        public Task<ThapPheuTabDto> GetThapPheuTabAsync(Guid idPhieu)
+            => _repo.GetThapPheuTabAsync(idPhieu);
+
+        public Task<ThapPheuTabDto> SaveThapPheuTabAsync(Guid idPhieu, ThapPheuTabSaveDto dto)
+            => _repo.SaveThapPheuTabAsync(idPhieu, dto);
+
+        public Task<ThapPheuTabDto> RefreshThapPheuTuCaTruocAsync(Guid idPhieu)
+            => _repo.RefreshThapPheuTuCaTruocAsync(idPhieu);
+
+        // ─── Danh mục Nơi nhận (Bụi cốc) ───
+
+        public async Task<List<BuiCocNoiNhanDto>> GetAllBuiCocNoiNhanAsync()
         {
-            var list = await _repo.GetChiTietAsync(ngaySx, ca, pheuId);
-            var pheuMap = await GetPheuMapAsync();
-            return list.Select(x => ToDto(x, pheuMap)).ToList();
+            var list = await _repo.GetAllBuiCocNoiNhanAsync();
+            return list.Select(ToDto).ToList();
         }
 
-        public async Task<ChiTietThapThanDto?> GetChiTietByIdAsync(int id)
+        public async Task<BuiCocNoiNhanDto?> GetBuiCocNoiNhanByIdAsync(int id)
         {
-            var entity = await _repo.GetChiTietByIdAsync(id);
-            if (entity == null) return null;
-            return ToDto(entity, await GetPheuMapAsync());
+            var entity = await _repo.GetBuiCocNoiNhanByIdAsync(id);
+            return entity == null ? null : ToDto(entity);
         }
 
-        // Trả null nếu phễu không tồn tại
-        public async Task<ChiTietThapThanDto?> AddChiTietAsync(ChiTietThapThanSaveDto dto)
+        public async Task<BuiCocNoiNhanDto> AddBuiCocNoiNhanAsync(BuiCocNoiNhanSaveDto dto)
         {
-            if (!await _repo.PheuExistsAsync(dto.PheuId)) return null;
-
-            var entity = await _repo.AddChiTietAsync(ToEntity(dto));
-            return ToDto(entity, await GetPheuMapAsync());
-        }
-
-        // Trả null nếu chi tiết hoặc phễu không tồn tại
-        public async Task<ChiTietThapThanDto?> UpdateChiTietAsync(int id, ChiTietThapThanSaveDto dto)
-        {
-            if (!await _repo.PheuExistsAsync(dto.PheuId)) return null;
-
-            var source = ToEntity(dto);
-            source.Id = id;
-            var entity = await _repo.UpdateChiTietAsync(source);
-            return entity == null ? null : ToDto(entity, await GetPheuMapAsync());
-        }
-
-        public Task<bool> DeleteChiTietAsync(int id)
-            => _repo.DeleteChiTietAsync(id);
-
-        // Lưu toàn bộ chi tiết của một ngày + ca (xóa cũ, thêm mới). Trả null nếu có phễu không tồn tại
-        public async Task<List<ChiTietThapThanDto>?> SaveChiTietNgayCaAsync(
-            DateTime ngaySx, int ca, List<ChiTietThapThanSaveDto> items)
-        {
-            foreach (var pheuId in items.Select(x => x.PheuId).Distinct())
+            var entity = await _repo.AddBuiCocNoiNhanAsync(new LC_TP_BuiCocNoiNhan
             {
-                if (!await _repo.PheuExistsAsync(pheuId)) return null;
-            }
-
-            var saved = await _repo.ReplaceChiTietByNgayCaAsync(ngaySx, ca, items.Select(ToEntity).ToList());
-            var pheuMap = await GetPheuMapAsync();
-            return saved.Select(x => ToDto(x, pheuMap)).ToList();
+                Ten = dto.Ten,
+                ThuTu = dto.ThuTu
+            });
+            return ToDto(entity);
         }
+
+        public async Task<BuiCocNoiNhanDto?> UpdateBuiCocNoiNhanAsync(int id, BuiCocNoiNhanSaveDto dto)
+        {
+            var entity = await _repo.UpdateBuiCocNoiNhanAsync(new LC_TP_BuiCocNoiNhan
+            {
+                Id = id,
+                Ten = dto.Ten,
+                ThuTu = dto.ThuTu
+            });
+            return entity == null ? null : ToDto(entity);
+        }
+
+        public Task<bool> DeleteBuiCocNoiNhanAsync(int id)
+            => _repo.DeleteBuiCocNoiNhanAsync(id);
+
+        private static BuiCocNoiNhanDto ToDto(LC_TP_BuiCocNoiNhan e) => new()
+        {
+            Id = e.Id,
+            Ten = e.Ten,
+            ThuTu = e.ThuTu
+        };
+
+        // ─── Tab Bụi cốc — API by-phieu riêng, TP1 only, xem LC_ThanhPhamRepository ───
+
+        public Task<BuiCocTabDto> GetBuiCocTabAsync(Guid idPhieu)
+            => _repo.GetBuiCocTabAsync(idPhieu);
+
+        public Task<BuiCocTabDto> SaveBuiCocTabAsync(Guid idPhieu, BuiCocTabSaveDto dto)
+            => _repo.SaveBuiCocTabAsync(idPhieu, dto);
+
+        public Task<BuiCocTabDto> RefreshBuiCocTuCaTruocAsync(Guid idPhieu)
+            => _repo.RefreshBuiCocTuCaTruocAsync(idPhieu);
 
         // ─── Lookup & mapping ───
 
         private async Task<Dictionary<int, string>> GetTenNhomMapAsync()
             => (await _repo.GetAllNhomAsync()).ToDictionary(x => x.ID, x => x.Ten ?? string.Empty);
-
-        private async Task<Dictionary<int, LC_TP_ThapThan_Pheu>> GetPheuMapAsync()
-            => (await _repo.GetAllPheuAsync()).ToDictionary(x => x.Id);
 
         private static NhomThapThanDto ToDto(LC_CumThap e) => new()
         {
@@ -181,50 +191,6 @@ namespace dataproduct.api.Services.NMLC
             TenThapThan = tenNhom.GetValueOrDefault(e.ThapThanId),
             TenPheu = e.TenPheu,
             ThuTu = e.ThuTu
-        };
-
-        private static ChiTietThapThanDto ToDto(LC_TP_ThapThan_ChiTiet e, Dictionary<int, LC_TP_ThapThan_Pheu> pheuMap)
-        {
-            pheuMap.TryGetValue(e.PheuId, out var pheu);
-            return new ChiTietThapThanDto
-            {
-                Id = e.Id,
-                NgaySx = e.NgaySx,
-                Ca = e.Ca,
-                PheuId = e.PheuId,
-                TenPheu = pheu?.TenPheu,
-                SoYCCN = e.SoYCCN,
-                GhiChuPhoiTron = e.GhiChuPhoiTron,
-                DoAm = e.DoAm,
-                KhoiLuongQuyKhoCan2A = e.KhoiLuongQuyKhoCan2A,
-                ThuTu = e.ThuTu,
-                SiLoId = e.SiLoId,
-                LoVatLieuId = e.LoVatLieuId,
-                TyLeKeHoach = e.TyLeKeHoach,
-                TyLeQuyKhoThucTe = e.TyLeQuyKhoThucTe,
-                KhoiLuongCan2A = e.KhoiLuongCan2A,
-                KhoiLuongQuyKho = e.KhoiLuongQuyKho,
-                LuyKeQuyKho = e.LuyKeQuyKho
-            };
-        }
-
-        private static LC_TP_ThapThan_ChiTiet ToEntity(ChiTietThapThanSaveDto d) => new()
-        {
-            NgaySx = d.NgaySx,
-            Ca = d.Ca,
-            PheuId = d.PheuId,
-            SoYCCN = d.SoYCCN,
-            GhiChuPhoiTron = d.GhiChuPhoiTron,
-            DoAm = d.DoAm,
-            KhoiLuongQuyKhoCan2A = d.KhoiLuongQuyKhoCan2A,
-            ThuTu = d.ThuTu,
-            SiLoId = d.SiLoId,
-            LoVatLieuId = d.LoVatLieuId,
-            TyLeKeHoach = d.TyLeKeHoach,
-            TyLeQuyKhoThucTe = d.TyLeQuyKhoThucTe,
-            KhoiLuongCan2A = d.KhoiLuongCan2A,
-            KhoiLuongQuyKho = d.KhoiLuongQuyKho,
-            LuyKeQuyKho = d.LuyKeQuyKho
         };
 
         // ─── Kết quả phân tích than ───

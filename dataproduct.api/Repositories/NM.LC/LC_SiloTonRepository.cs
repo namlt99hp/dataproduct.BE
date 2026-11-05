@@ -27,6 +27,7 @@ namespace dataproduct.api.Repositories.NM.LC
                     LoaiLieu = x.LoaiLieu,
                     TenNhapLieu = x.TenNhapLieu,
                     CongThuc = x.CongThuc,
+                    IdCumSanXuat = x.ID_CumSanXuat,
                     NgayTao = x.NgayTao,
                 })
                 .AsNoTracking()
@@ -63,6 +64,7 @@ namespace dataproduct.api.Repositories.NM.LC
             existing.LoaiLieu = entity.LoaiLieu;
             existing.TenNhapLieu = entity.TenNhapLieu;
             existing.CongThuc = entity.CongThuc;
+            existing.ID_CumSanXuat = entity.ID_CumSanXuat;
 
             await _context.SaveChangesAsync();
             return existing;

@@ -1,3 +1,4 @@
+using dataproduct.api.DTOs.NMLC;
 using dataproduct.api.Models;
 using dataproduct.api.Models.NMLC;
 using dataproduct.api.Repositories;
@@ -151,90 +152,583 @@ namespace dataproduct.api.Repositories.NMLC
             return true;
         }
 
-        // ─── Chi tiết ───
+        // ─── Tab Tháp/Phễu (LC_TP_TonPheu / LC_TP_CapThap) — API by-phieu riêng, KHÔNG qua
+        // DataJson, cùng nguyên tắc với LC_PhoiTronRepository. Công thức áp dụng:
+        // F06a (Scope=1)/F06b (Scope=2) cho KLAmTonCuoi/KLTonCuoiQuyKho của Phễu; F07
+        // (CROSS_REGION từ LC_PhoiTron) cho CapLenThapQuyKho; F08 (CUMULATIVE, mốc reset
+        // Ca1/ngày1 — xem LC_PhoiTronRepository.ComputeLuyKeQuyKhoAsync) cho LuyKeCapLenThap/
+        // LuyKeNapLo; PREVIOUS_SHIFT cho KLTonDauQuyKho của Phễu.
+        // Xem .claude/LuyenCoc/LC_01_PhanTich_ThietKe_TP1_TP2.md mục 5 (DANH MỤC CÔNG THỨC).
 
-        public async Task<List<LC_TP_ThapThan_ChiTiet>> GetChiTietAsync(
-            DateTime? ngaySx = null, int? ca = null, int? pheuId = null)
+        public async Task<ThapPheuTabDto> GetThapPheuTabAsync(Guid idPhieu)
         {
-            var query = _context.LC_TP_ThapThan_ChiTiet.AsNoTracking().AsQueryable();
+            var phieu = await _context.BmPhieus.AsNoTracking().FirstOrDefaultAsync(p => p.Idphieu == idPhieu)
+                ?? throw new InvalidOperationException("Không tìm thấy phiếu.");
+            var scope = phieu.Scope ?? 0;
 
-            if (ngaySx.HasValue)
+            var cumThaps = await _context.LC_CumThap.AsNoTracking()
+                .Where(c => c.Scope == scope && !c.IsDelete)
+                .OrderBy(c => c.ThuTu).ThenBy(c => c.ID)
+                .ToListAsync();
+            var pheus = await (
+                from p in _context.LC_TP_ThapThan_Pheu.AsNoTracking()
+                join c in _context.LC_CumThap.AsNoTracking() on p.ThapThanId equals c.ID
+                where !p.IsDelete && c.Scope == scope && !c.IsDelete
+                orderby c.ThuTu, c.ID, p.ThuTu ?? int.MaxValue, p.Id
+                select p
+            ).ToListAsync();
+
+            var tonPheuRows = await _context.LC_TP_TonPheu.AsNoTracking()
+                .Where(x => x.IDPhieu == idPhieu)
+                .ToDictionaryAsync(x => x.PheuId);
+            var capThapRows = await _context.LC_TP_CapThap.AsNoTracking()
+                .Where(x => x.IDPhieu == idPhieu)
+                .ToDictionaryAsync(x => x.CumThapId);
+
+            var capLenThapByCum = await ComputeCapLenThapMapAsync(idPhieu, scope);
+
+            var thapDtos = cumThaps.Select(cum =>
             {
-                var from = ngaySx.Value.Date;
-                var to = from.AddDays(1);
-                query = query.Where(x => x.NgaySx >= from && x.NgaySx < to);
+                capThapRows.TryGetValue(cum.ID, out var row);
+                return new CapThapDto
+                {
+                    CumThapId = cum.ID,
+                    CumThapMa = cum.Ma,
+                    DoAmThap = row?.DoAmThap,
+                    CapLenThapQuyKho = capLenThapByCum.GetValueOrDefault(cum.ID),
+                    LuyKeCapLenThap = row?.LuyKeCapLenThap,
+                    NapLoQuyKho = row?.NapLoQuyKho,
+                    LuyKeNapLo = row?.LuyKeNapLo,
+                    GhiChu = row?.GhiChu,
+                };
+            }).ToList();
+
+            var pheuDtos = pheus.Select(p =>
+            {
+                tonPheuRows.TryGetValue(p.Id, out var row);
+                return new TonPheuDto
+                {
+                    PheuId = p.Id,
+                    ThapThanId = p.ThapThanId,
+                    TenPheu = p.TenPheu,
+                    KLTonDauQuyKho = row?.KLTonDauQuyKho,
+                    MucRadar = row?.MucRadar,
+                    KLAmTonCuoi = row?.KLAmTonCuoi,
+                    KLTonCuoiQuyKho = row?.KLTonCuoiQuyKho,
+                    GhiChu = row?.GhiChu,
+                };
+            }).ToList();
+
+            return new ThapPheuTabDto { Pheu = pheuDtos, Thap = thapDtos };
+        }
+
+        public async Task<ThapPheuTabDto> SaveThapPheuTabAsync(Guid idPhieu, ThapPheuTabSaveDto dto)
+        {
+            var phieu = await _context.BmPhieus.FirstOrDefaultAsync(p => p.Idphieu == idPhieu)
+                ?? throw new InvalidOperationException("Không tìm thấy phiếu.");
+            if (phieu.TinhTrang == 5 || phieu.IsLock == 1)
+                throw new InvalidOperationException("Phiếu đã chốt/khóa, không thể sửa.");
+
+            var scope = phieu.Scope ?? 0;
+            var ngaySx = phieu.NgaySX;
+            var ca = phieu.Ca;
+
+            var pheuMaster = await (
+                from p in _context.LC_TP_ThapThan_Pheu.AsNoTracking()
+                join c in _context.LC_CumThap.AsNoTracking() on p.ThapThanId equals c.ID
+                where !p.IsDelete && c.Scope == scope && !c.IsDelete
+                select p
+            ).ToListAsync();
+            var pheuMasterById = pheuMaster.ToDictionary(p => p.Id);
+
+            var cumThaps = await _context.LC_CumThap.AsNoTracking()
+                .Where(c => c.Scope == scope && !c.IsDelete)
+                .ToDictionaryAsync(c => c.ID);
+
+            var existingTonPheu = await _context.LC_TP_TonPheu
+                .Where(x => x.IDPhieu == idPhieu)
+                .ToDictionaryAsync(x => x.PheuId);
+            var existingCapThap = await _context.LC_TP_CapThap
+                .Where(x => x.IDPhieu == idPhieu)
+                .ToDictionaryAsync(x => x.CumThapId);
+
+            // Lưu Tháp trước — Phễu cần DoAmThap của Tháp chứa nó để tính F06a/F06b.
+            var doAmThapByCum = new Dictionary<int, decimal?>();
+            foreach (var d in dto.Thap)
+            {
+                if (!cumThaps.TryGetValue(d.CumThapId, out var cum)) continue;
+                doAmThapByCum[d.CumThapId] = d.DoAmThap;
+
+                if (!existingCapThap.TryGetValue(d.CumThapId, out var row))
+                {
+                    row = new LC_TP_CapThap { IDPhieu = idPhieu, CumThapId = d.CumThapId, NgayTao = DateTime.Now };
+                    _context.LC_TP_CapThap.Add(row);
+                    existingCapThap[d.CumThapId] = row;
+                }
+
+                row.NgaySX = ngaySx;
+                row.Ca = ca;
+                row.Scope = scope;
+                row.DoAmThap = d.DoAmThap;
+                row.NapLoQuyKho = d.NapLoQuyKho;
+                row.GhiChu = d.GhiChu;
+                row.CapLenThapQuyKho = await ComputeCapLenThapAsync(idPhieu, scope, d.CumThapId);
+                row.LuyKeCapLenThap = await ComputeLuyKeThapAsync(
+                    idPhieu, scope, ngaySx, ca, d.CumThapId, row.CapLenThapQuyKho, x => x.LuyKeCapLenThap);
+                row.LuyKeNapLo = await ComputeLuyKeThapAsync(
+                    idPhieu, scope, ngaySx, ca, d.CumThapId, d.NapLoQuyKho, x => x.LuyKeNapLo);
             }
-            if (ca.HasValue)
-                query = query.Where(x => x.Ca == ca.Value);
-            if (pheuId.HasValue)
-                query = query.Where(x => x.PheuId == pheuId.Value);
 
-            return await query.OrderBy(x => x.NgaySx).ThenBy(x => x.Ca).ThenBy(x => x.ThuTu).ToListAsync();
+            foreach (var d in dto.Pheu)
+            {
+                if (!pheuMasterById.TryGetValue(d.PheuId, out var pheuInfo)) continue;
+
+                if (!existingTonPheu.TryGetValue(d.PheuId, out var row))
+                {
+                    row = new LC_TP_TonPheu { IDPhieu = idPhieu, PheuId = d.PheuId, NgayTao = DateTime.Now };
+                    _context.LC_TP_TonPheu.Add(row);
+                    existingTonPheu[d.PheuId] = row;
+                }
+
+                var doAmThap = doAmThapByCum.TryGetValue(pheuInfo.ThapThanId, out var dA)
+                    ? dA
+                    : existingCapThap.TryGetValue(pheuInfo.ThapThanId, out var capThapRow) ? capThapRow.DoAmThap : null;
+
+                row.NgaySX = ngaySx;
+                row.Ca = ca;
+                row.Scope = scope;
+                row.MucRadar = d.MucRadar;
+                row.GhiChu = d.GhiChu;
+                row.KLTonDauQuyKho = await ComputeTonDauPheuAsync(idPhieu, scope, ngaySx, ca, d.PheuId);
+                row.KLAmTonCuoi = ComputeKLAmTonCuoiPheu(scope, d.MucRadar, doAmThap);
+                row.KLTonCuoiQuyKho = ComputeKhoiLuongKho(row.KLAmTonCuoi, doAmThap);
+            }
+
+            await _context.SaveChangesAsync();
+            return await GetThapPheuTabAsync(idPhieu);
         }
 
-        public async Task<LC_TP_ThapThan_ChiTiet?> GetChiTietByIdAsync(int id)
+        public async Task<ThapPheuTabDto> RefreshThapPheuTuCaTruocAsync(Guid idPhieu)
         {
-            return await _context.LC_TP_ThapThan_ChiTiet.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id);
+            var phieu = await _context.BmPhieus.AsNoTracking().FirstOrDefaultAsync(p => p.Idphieu == idPhieu)
+                ?? throw new InvalidOperationException("Không tìm thấy phiếu.");
+            if (phieu.TinhTrang == 5 || phieu.IsLock == 1)
+                throw new InvalidOperationException("Phiếu đã chốt/khóa, không thể làm mới.");
+
+            var scope = phieu.Scope ?? 0;
+
+            var tonPheuRows = await _context.LC_TP_TonPheu.Where(x => x.IDPhieu == idPhieu).ToListAsync();
+            foreach (var row in tonPheuRows)
+            {
+                row.KLTonDauQuyKho = await ComputeTonDauPheuAsync(idPhieu, scope, phieu.NgaySX, phieu.Ca, row.PheuId);
+            }
+
+            var capThapRows = await _context.LC_TP_CapThap.Where(x => x.IDPhieu == idPhieu).ToListAsync();
+            foreach (var row in capThapRows)
+            {
+                row.CapLenThapQuyKho = await ComputeCapLenThapAsync(idPhieu, scope, row.CumThapId);
+                row.LuyKeCapLenThap = await ComputeLuyKeThapAsync(
+                    idPhieu, scope, phieu.NgaySX, phieu.Ca, row.CumThapId, row.CapLenThapQuyKho, x => x.LuyKeCapLenThap);
+                row.LuyKeNapLo = await ComputeLuyKeThapAsync(
+                    idPhieu, scope, phieu.NgaySX, phieu.Ca, row.CumThapId, row.NapLoQuyKho, x => x.LuyKeNapLo);
+            }
+
+            await _context.SaveChangesAsync();
+            return await GetThapPheuTabAsync(idPhieu);
         }
 
-        public async Task<LC_TP_ThapThan_ChiTiet> AddChiTietAsync(LC_TP_ThapThan_ChiTiet entity)
+        public async Task InitializeThapPheuAsync(BmPhieu phieu)
         {
-            _context.LC_TP_ThapThan_ChiTiet.Add(entity);
+            if (phieu.TinhTrang == 5 || phieu.IsLock == 1) return;
+            if (await _context.LC_TP_TonPheu.AnyAsync(x => x.IDPhieu == phieu.Idphieu)) return; // đã init rồi
+
+            var scope = phieu.Scope ?? 0;
+
+            var cumThaps = await _context.LC_CumThap.AsNoTracking()
+                .Where(c => c.Scope == scope && !c.IsDelete)
+                .ToListAsync();
+            if (cumThaps.Count == 0) return;
+
+            // CapLenThapQuyKho/LuyKeCapLenThap chưa có gì để tính lúc mới tạo phiếu (chưa nhập
+            // Phối trộn) — để NULL, GetThapPheuTabAsync/SaveThapPheuTabAsync sẽ tính lại khi gọi.
+            foreach (var cum in cumThaps)
+            {
+                _context.LC_TP_CapThap.Add(new LC_TP_CapThap
+                {
+                    IDPhieu = phieu.Idphieu,
+                    NgaySX = phieu.NgaySX,
+                    Ca = phieu.Ca,
+                    Scope = scope,
+                    CumThapId = cum.ID,
+                    NgayTao = DateTime.Now,
+                });
+            }
+
+            var pheus = await (
+                from p in _context.LC_TP_ThapThan_Pheu.AsNoTracking()
+                join c in _context.LC_CumThap.AsNoTracking() on p.ThapThanId equals c.ID
+                where !p.IsDelete && c.Scope == scope && !c.IsDelete
+                select p
+            ).ToListAsync();
+
+            foreach (var p in pheus)
+            {
+                _context.LC_TP_TonPheu.Add(new LC_TP_TonPheu
+                {
+                    IDPhieu = phieu.Idphieu,
+                    NgaySX = phieu.NgaySX,
+                    Ca = phieu.Ca,
+                    Scope = scope,
+                    PheuId = p.Id,
+                    KLTonDauQuyKho = await ComputeTonDauPheuAsync(phieu.Idphieu, scope, phieu.NgaySX, phieu.Ca, p.Id),
+                    NgayTao = DateTime.Now,
+                });
+            }
+
+            await _context.SaveChangesAsync();
+        }
+
+        // F07 — Σ KLQuyKhoCan của LC_PhoiTron (header) cùng Scope+ID_CumThap, CHỈ
+        // LoaiPhoiTron='SAN_XUAT' (loại trừ THU_NGHIEM — xem LC_01 mục 5, "[+ thử nghiệm]"
+        // trong ngoặc = chưa chắc, mặc định không gộp), của CHÍNH phiếu hiện tại.
+        private async Task<decimal?> ComputeCapLenThapAsync(Guid idPhieu, int scope, int cumThapId)
+        {
+            var rows = await _context.LC_PhoiTron.AsNoTracking()
+                .Where(x => x.IDPhieu == idPhieu && x.Scope == scope && x.ID_CumThap == cumThapId
+                    && x.LoaiPhoiTron == "SAN_XUAT")
+                .Select(x => x.KLQuyKhoCan)
+                .ToListAsync();
+            if (rows.Count == 0) return null;
+            return rows.Aggregate(0m, (acc, v) => acc + (v ?? 0));
+        }
+
+        private async Task<Dictionary<int, decimal?>> ComputeCapLenThapMapAsync(Guid idPhieu, int scope)
+        {
+            return await _context.LC_PhoiTron.AsNoTracking()
+                .Where(x => x.IDPhieu == idPhieu && x.Scope == scope && x.LoaiPhoiTron == "SAN_XUAT")
+                .GroupBy(x => x.ID_CumThap)
+                .Select(g => new { CumThapId = g.Key, Tong = g.Sum(x => x.KLQuyKhoCan ?? 0) })
+                .ToDictionaryAsync(x => x.CumThapId, x => (decimal?)x.Tong);
+        }
+
+        // F08 — mốc reset Ca1/ngày1 hàng tháng, khoá (Scope, CumThapId) — mirror
+        // LC_PhoiTronRepository.ComputeLuyKeQuyKhoAsync. `currentField`/`luyKeField` chọn cột
+        // áp dụng (CapLenThap hoặc NapLo) dùng chung 1 hàm.
+        private async Task<decimal?> ComputeLuyKeThapAsync(
+            Guid idPhieu, int scope, DateOnly? ngaySx, int? ca, int cumThapId, decimal? giaTriCaNay,
+            System.Linq.Expressions.Expression<Func<LC_TP_CapThap, decimal?>> luyKeField)
+        {
+            if (giaTriCaNay == null) return null;
+            if (ngaySx == null || ca == null) return giaTriCaNay;
+            if (ngaySx.Value.Day == 1 && ca == 1) return giaTriCaNay;
+
+            var prevQuery = _context.LC_TP_CapThap.AsNoTracking()
+                .Where(x => x.Scope == scope && x.CumThapId == cumThapId && x.IDPhieu != idPhieu
+                    && (x.NgaySX < ngaySx || (x.NgaySX == ngaySx && x.Ca < ca)))
+                .OrderByDescending(x => x.NgaySX).ThenByDescending(x => x.Ca);
+
+            var prev = await prevQuery.Select(luyKeField).FirstOrDefaultAsync();
+            return (prev ?? 0) + giaTriCaNay.Value;
+        }
+
+        // PREVIOUS_SHIFT — tồn cuối kíp trước CỦA CHÍNH phễu đó, reset=0 mốc Ca1/ngày1.
+        private async Task<decimal?> ComputeTonDauPheuAsync(
+            Guid idPhieu, int scope, DateOnly? ngaySx, int? ca, int pheuId)
+        {
+            if (ngaySx == null || ca == null) return 0;
+            if (ngaySx.Value.Day == 1 && ca == 1) return 0;
+
+            var prev = await _context.LC_TP_TonPheu.AsNoTracking()
+                .Where(x => x.Scope == scope && x.PheuId == pheuId && x.IDPhieu != idPhieu
+                    && (x.NgaySX < ngaySx || (x.NgaySX == ngaySx && x.Ca < ca)))
+                .OrderByDescending(x => x.NgaySX).ThenByDescending(x => x.Ca)
+                .Select(x => x.KLTonCuoiQuyKho)
+                .FirstOrDefaultAsync();
+            return prev ?? 0;
+        }
+
+        // F06a (Scope=1/TP1): KLAm = H<6 ? (H/6)^2*100 : 100+33.5*(H-6)
+        // F06b (Scope=2/TP2): KLAm = V(G)*(0.707+DoAmThap/100), V(G) piecewise — xem LC_01
+        // mục 5. H/G = MucRadar (mét); DoAmThap lấy từ Tháp chứa phễu đó.
+        private static decimal? ComputeKLAmTonCuoiPheu(int scope, decimal? mucRadar, decimal? doAmThap)
+        {
+            if (mucRadar == null) return null;
+            var h = mucRadar.Value;
+
+            if (scope == 1)
+            {
+                if (h < 6m)
+                {
+                    var x = h / 6m;
+                    return Math.Round(x * x * 100m, 3);
+                }
+                return Math.Round(100m + 33.5m * (h - 6m), 3);
+            }
+
+            if (scope == 2)
+            {
+                if (doAmThap == null) return null;
+                decimal vG;
+                if (h >= 7.368m)
+                {
+                    vG = (h - 7.368m) * 62.964m + 90m;
+                }
+                else
+                {
+                    var r = h * 0.442m + 0.75m;
+                    vG = (r * r + 0.75m * r + 0.562m) * h * (decimal)Math.PI / 3m;
+                }
+                return Math.Round(vG * (0.707m + doAmThap.Value / 100m), 3);
+            }
+
+            return null;
+        }
+
+        // KLKho = KLAm x (100 - DoAmThap) / 100 — F01 áp lại cho tồn phễu (giống F05a/F05b silo).
+        private static decimal? ComputeKhoiLuongKho(decimal? klAm, decimal? doAm)
+        {
+            if (klAm == null || doAm == null) return null;
+            return Math.Round(klAm.Value * (100 - doAm.Value) / 100m, 3);
+        }
+
+        // ─── Danh mục Nơi nhận (Bụi cốc) ───
+
+        public async Task<List<LC_TP_BuiCocNoiNhan>> GetAllBuiCocNoiNhanAsync(bool includeDeleted = false)
+        {
+            var query = _context.LC_TP_BuiCocNoiNhan.AsNoTracking();
+            if (!includeDeleted) query = query.Where(x => !x.IsDelete);
+            return await query.OrderBy(x => x.ThuTu ?? byte.MaxValue).ThenBy(x => x.Id).ToListAsync();
+        }
+
+        public async Task<LC_TP_BuiCocNoiNhan?> GetBuiCocNoiNhanByIdAsync(int id)
+        {
+            return await _context.LC_TP_BuiCocNoiNhan.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == id && !x.IsDelete);
+        }
+
+        public async Task<LC_TP_BuiCocNoiNhan> AddBuiCocNoiNhanAsync(LC_TP_BuiCocNoiNhan entity)
+        {
+            entity.IsDelete = false;
+            entity.NgayTao = DateTime.Now;
+            _context.LC_TP_BuiCocNoiNhan.Add(entity);
             await _context.SaveChangesAsync();
             return entity;
         }
 
-        public async Task<List<LC_TP_ThapThan_ChiTiet>> AddRangeChiTietAsync(IEnumerable<LC_TP_ThapThan_ChiTiet> entities)
+        public async Task<LC_TP_BuiCocNoiNhan?> UpdateBuiCocNoiNhanAsync(LC_TP_BuiCocNoiNhan entity)
         {
-            var list = entities.ToList();
-            _context.LC_TP_ThapThan_ChiTiet.AddRange(list);
-            await _context.SaveChangesAsync();
-            return list;
-        }
-
-        public async Task<LC_TP_ThapThan_ChiTiet?> UpdateChiTietAsync(LC_TP_ThapThan_ChiTiet entity)
-        {
-            var existing = await _context.LC_TP_ThapThan_ChiTiet.FirstOrDefaultAsync(x => x.Id == entity.Id);
+            var existing = await _context.LC_TP_BuiCocNoiNhan
+                .FirstOrDefaultAsync(x => x.Id == entity.Id && !x.IsDelete);
             if (existing == null) return null;
 
-            _context.Entry(existing).CurrentValues.SetValues(entity);
+            existing.Ten = entity.Ten;
+            existing.ThuTu = entity.ThuTu;
             await _context.SaveChangesAsync();
             return existing;
         }
 
-        public async Task<bool> DeleteChiTietAsync(int id)
+        public async Task<bool> DeleteBuiCocNoiNhanAsync(int id)
         {
-            var existing = await _context.LC_TP_ThapThan_ChiTiet.FirstOrDefaultAsync(x => x.Id == id);
+            var existing = await _context.LC_TP_BuiCocNoiNhan
+                .FirstOrDefaultAsync(x => x.Id == id && !x.IsDelete);
             if (existing == null) return false;
 
-            _context.LC_TP_ThapThan_ChiTiet.Remove(existing);
+            existing.IsDelete = true;
             await _context.SaveChangesAsync();
             return true;
         }
 
-        public async Task<List<LC_TP_ThapThan_ChiTiet>> ReplaceChiTietByNgayCaAsync(
-            DateTime ngaySx, int ca, IEnumerable<LC_TP_ThapThan_ChiTiet> entities)
+        // ─── Tab Bụi cốc (LC_TP_BuiCoc / LC_TP_BuiCocXuat) — API by-phieu riêng, TP1 only ───
+        // "I. Sản lượng" + "II. Bụi cốc tồn" + "III. Bụi cốc xuất", xem TP1.xlsx dòng 201-217.
+
+        public async Task<BuiCocTabDto> GetBuiCocTabAsync(Guid idPhieu)
         {
-            var from = ngaySx.Date;
-            var to = from.AddDays(1);
-            var list = entities.ToList();
+            var phieu = await _context.BmPhieus.AsNoTracking().FirstOrDefaultAsync(p => p.Idphieu == idPhieu)
+                ?? throw new InvalidOperationException("Không tìm thấy phiếu.");
 
-            await using var tx = await _context.Database.BeginTransactionAsync();
-            var old = await _context.LC_TP_ThapThan_ChiTiet
-                .Where(x => x.NgaySx >= from && x.NgaySx < to && x.Ca == ca)
-                .ToListAsync();
-            _context.LC_TP_ThapThan_ChiTiet.RemoveRange(old);
+            var header = await _context.LC_TP_BuiCoc.AsNoTracking().FirstOrDefaultAsync(x => x.IDPhieu == idPhieu);
 
-            foreach (var e in list)
+            var noiNhanList = await GetAllBuiCocNoiNhanAsync();
+            var xuatRows = await _context.LC_TP_BuiCocXuat.AsNoTracking()
+                .Where(x => x.IDPhieu == idPhieu)
+                .ToDictionaryAsync(x => x.NoiNhanId);
+
+            var xuatDtos = noiNhanList.Select(n =>
             {
-                e.NgaySx = from;
-                e.Ca = ca;
+                xuatRows.TryGetValue(n.Id, out var row);
+                return new BuiCocXuatDto
+                {
+                    NoiNhanId = n.Id,
+                    TenNoiNhan = n.Ten,
+                    KhoiLuong = row?.KhoiLuong,
+                    LuyKeQuyKho = row?.LuyKeQuyKho,
+                };
+            }).ToList();
+
+            return new BuiCocTabDto
+            {
+                SanLuongTrongCa = header?.SanLuongTrongCa,
+                LuyKeSanLuong = header?.LuyKeSanLuong,
+                TonDauKyQuyKho = header?.TonDauKyQuyKho,
+                TonCuoiKyQuyKho = header?.TonCuoiKyQuyKho,
+                Xuat = xuatDtos,
+            };
+        }
+
+        public async Task<BuiCocTabDto> SaveBuiCocTabAsync(Guid idPhieu, BuiCocTabSaveDto dto)
+        {
+            var phieu = await _context.BmPhieus.FirstOrDefaultAsync(p => p.Idphieu == idPhieu)
+                ?? throw new InvalidOperationException("Không tìm thấy phiếu.");
+            if (phieu.TinhTrang == 5 || phieu.IsLock == 1)
+                throw new InvalidOperationException("Phiếu đã chốt/khóa, không thể sửa.");
+
+            var scope = phieu.Scope ?? 0;
+            var ngaySx = phieu.NgaySX;
+            var ca = phieu.Ca;
+
+            var noiNhanIds = (await GetAllBuiCocNoiNhanAsync()).Select(n => n.Id).ToHashSet();
+
+            var existingXuat = await _context.LC_TP_BuiCocXuat
+                .Where(x => x.IDPhieu == idPhieu)
+                .ToDictionaryAsync(x => x.NoiNhanId);
+
+            decimal? tongKhoiLuongXuat = 0;
+            foreach (var d in dto.Xuat)
+            {
+                if (!noiNhanIds.Contains(d.NoiNhanId)) continue;
+
+                if (!existingXuat.TryGetValue(d.NoiNhanId, out var row))
+                {
+                    row = new LC_TP_BuiCocXuat { IDPhieu = idPhieu, NoiNhanId = d.NoiNhanId, NgayTao = DateTime.Now };
+                    _context.LC_TP_BuiCocXuat.Add(row);
+                    existingXuat[d.NoiNhanId] = row;
+                }
+
+                row.NgaySX = ngaySx;
+                row.Ca = ca;
+                row.Scope = scope;
+                row.KhoiLuong = d.KhoiLuong;
+                row.LuyKeQuyKho = await ComputeLuyKeBuiCocXuatAsync(idPhieu, scope, ngaySx, ca, d.NoiNhanId, d.KhoiLuong);
+                tongKhoiLuongXuat += d.KhoiLuong ?? 0;
             }
-            _context.LC_TP_ThapThan_ChiTiet.AddRange(list);
+
+            var header = await _context.LC_TP_BuiCoc.FirstOrDefaultAsync(x => x.IDPhieu == idPhieu);
+            if (header == null)
+            {
+                header = new LC_TP_BuiCoc { IDPhieu = idPhieu, NgayTao = DateTime.Now };
+                _context.LC_TP_BuiCoc.Add(header);
+            }
+
+            var tonDau = await ComputeTonDauBuiCocAsync(idPhieu, scope, ngaySx, ca);
+
+            header.NgaySX = ngaySx;
+            header.Ca = ca;
+            header.Scope = scope;
+            header.SanLuongTrongCa = dto.SanLuongTrongCa;
+            header.LuyKeSanLuong = await ComputeLuyKeBuiCocSanLuongAsync(idPhieu, scope, ngaySx, ca, dto.SanLuongTrongCa);
+            header.TonDauKyQuyKho = tonDau;
+            header.TonCuoiKyQuyKho = (tonDau ?? 0) + (dto.SanLuongTrongCa ?? 0) - (tongKhoiLuongXuat ?? 0);
 
             await _context.SaveChangesAsync();
-            await tx.CommitAsync();
-            return list;
+            return await GetBuiCocTabAsync(idPhieu);
+        }
+
+        public async Task<BuiCocTabDto> RefreshBuiCocTuCaTruocAsync(Guid idPhieu)
+        {
+            var phieu = await _context.BmPhieus.AsNoTracking().FirstOrDefaultAsync(p => p.Idphieu == idPhieu)
+                ?? throw new InvalidOperationException("Không tìm thấy phiếu.");
+            if (phieu.TinhTrang == 5 || phieu.IsLock == 1)
+                throw new InvalidOperationException("Phiếu đã chốt/khóa, không thể làm mới.");
+
+            var scope = phieu.Scope ?? 0;
+
+            var header = await _context.LC_TP_BuiCoc.FirstOrDefaultAsync(x => x.IDPhieu == idPhieu);
+            if (header != null)
+            {
+                var tonDau = await ComputeTonDauBuiCocAsync(idPhieu, scope, phieu.NgaySX, phieu.Ca);
+                header.TonDauKyQuyKho = tonDau;
+                header.TonCuoiKyQuyKho = tonDau + header.SanLuongTrongCa
+                    - await _context.LC_TP_BuiCocXuat.Where(x => x.IDPhieu == idPhieu).SumAsync(x => x.KhoiLuong ?? 0);
+            }
+
+            var xuatRows = await _context.LC_TP_BuiCocXuat.Where(x => x.IDPhieu == idPhieu).ToListAsync();
+            foreach (var row in xuatRows)
+            {
+                row.LuyKeQuyKho = await ComputeLuyKeBuiCocXuatAsync(
+                    idPhieu, scope, phieu.NgaySX, phieu.Ca, row.NoiNhanId, row.KhoiLuong);
+            }
+
+            await _context.SaveChangesAsync();
+            return await GetBuiCocTabAsync(idPhieu);
+        }
+
+        public async Task InitializeBuiCocAsync(BmPhieu phieu)
+        {
+            if (phieu.Scope != 1) return; // chỉ TP1 có khối Bụi cốc (xem SECTION 19 lc_bcxs_xnl_tp.sql)
+            if (phieu.TinhTrang == 5 || phieu.IsLock == 1) return;
+            if (await _context.LC_TP_BuiCoc.AnyAsync(x => x.IDPhieu == phieu.Idphieu)) return; // đã init rồi
+
+            _context.LC_TP_BuiCoc.Add(new LC_TP_BuiCoc
+            {
+                IDPhieu = phieu.Idphieu,
+                NgaySX = phieu.NgaySX,
+                Ca = phieu.Ca,
+                Scope = phieu.Scope.Value,
+                TonDauKyQuyKho = await ComputeTonDauBuiCocAsync(phieu.Idphieu, phieu.Scope.Value, phieu.NgaySX, phieu.Ca),
+                NgayTao = DateTime.Now,
+            });
+
+            await _context.SaveChangesAsync();
+        }
+
+        // CUMULATIVE "I. Sản lượng" — mốc reset Ca1/ngày1, khoá theo Scope (chỉ 1 hạng mục,
+        // chỉ TP1/Scope=1).
+        private async Task<decimal?> ComputeLuyKeBuiCocSanLuongAsync(
+            Guid idPhieu, int scope, DateOnly? ngaySx, int? ca, decimal? sanLuongCaNay)
+        {
+            if (sanLuongCaNay == null) return null;
+            if (ngaySx == null || ca == null) return sanLuongCaNay;
+            if (ngaySx.Value.Day == 1 && ca == 1) return sanLuongCaNay;
+
+            var prev = await _context.LC_TP_BuiCoc.AsNoTracking()
+                .Where(x => x.Scope == scope && x.IDPhieu != idPhieu
+                    && (x.NgaySX < ngaySx || (x.NgaySX == ngaySx && x.Ca < ca)))
+                .OrderByDescending(x => x.NgaySX).ThenByDescending(x => x.Ca)
+                .Select(x => x.LuyKeSanLuong)
+                .FirstOrDefaultAsync();
+            return (prev ?? 0) + sanLuongCaNay.Value;
+        }
+
+        // PREVIOUS_SHIFT "II. Bụi cốc tồn" — tồn cuối kíp trước, reset=0 mốc Ca1/ngày1.
+        private async Task<decimal?> ComputeTonDauBuiCocAsync(Guid idPhieu, int scope, DateOnly? ngaySx, int? ca)
+        {
+            if (ngaySx == null || ca == null) return 0;
+            if (ngaySx.Value.Day == 1 && ca == 1) return 0;
+
+            var prev = await _context.LC_TP_BuiCoc.AsNoTracking()
+                .Where(x => x.Scope == scope && x.IDPhieu != idPhieu
+                    && (x.NgaySX < ngaySx || (x.NgaySX == ngaySx && x.Ca < ca)))
+                .OrderByDescending(x => x.NgaySX).ThenByDescending(x => x.Ca)
+                .Select(x => x.TonCuoiKyQuyKho)
+                .FirstOrDefaultAsync();
+            return prev ?? 0;
+        }
+
+        // CUMULATIVE "III. Bụi cốc xuất" — khoá theo NoiNhanId, mốc reset Ca1/ngày1.
+        private async Task<decimal?> ComputeLuyKeBuiCocXuatAsync(
+            Guid idPhieu, int scope, DateOnly? ngaySx, int? ca, int noiNhanId, decimal? khoiLuongCaNay)
+        {
+            if (khoiLuongCaNay == null) return null;
+            if (ngaySx == null || ca == null) return khoiLuongCaNay;
+            if (ngaySx.Value.Day == 1 && ca == 1) return khoiLuongCaNay;
+
+            var prev = await _context.LC_TP_BuiCocXuat.AsNoTracking()
+                .Where(x => x.Scope == scope && x.NoiNhanId == noiNhanId && x.IDPhieu != idPhieu
+                    && (x.NgaySX < ngaySx || (x.NgaySX == ngaySx && x.Ca < ca)))
+                .OrderByDescending(x => x.NgaySX).ThenByDescending(x => x.Ca)
+                .Select(x => x.LuyKeQuyKho)
+                .FirstOrDefaultAsync();
+            return (prev ?? 0) + khoiLuongCaNay.Value;
         }
 
         // ─── Kết quả phân tích than (LC_TP_KetQuaPhanTichThan) ───

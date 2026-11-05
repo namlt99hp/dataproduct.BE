@@ -29,6 +29,9 @@ namespace dataproduct.api.DTOs.NM.LC
         public string NhomTongHop { get; set; } = string.Empty;
         public int? IdPhongBan { get; set; }
         public string? TenPhongBan { get; set; } // resolved từ PRODUCTDATA.Tbl_PhongBan, chỉ hiển thị
+        // FK logic LC_TP_CumSanXuat.Id — cụm SẢN XUẤT (1,2,5/3,4...), NULL = dùng chung 2 cụm.
+        // KHÁC IdCum (cụm "nơi nhận" ở trên) — xem LC_SanLuongCocRepository.
+        public int? IdCumSanXuat { get; set; }
         public DateTime NgayTao { get; set; }
         public List<LcXuatCapDanhMucChiTietDto> ChiTiet { get; set; } = new();
     }
@@ -43,6 +46,7 @@ namespace dataproduct.api.DTOs.NM.LC
         public int IdLoaiCoc { get; set; }
         public string NhomTongHop { get; set; } = string.Empty;
         public int? IdPhongBan { get; set; }
+        public int? IdCumSanXuat { get; set; }
     }
 
     public class UpdateLcXuatCapDanhMucCumDto : CreateLcXuatCapDanhMucCumDto

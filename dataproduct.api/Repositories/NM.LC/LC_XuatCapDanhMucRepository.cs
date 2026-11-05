@@ -68,6 +68,7 @@ namespace dataproduct.api.Repositories.NM.LC
                     NhomTongHop = c.NhomTongHop,
                     IdPhongBan = c.ID_PhongBan,
                     TenPhongBan = c.ID_PhongBan != null ? tenPhongBanById.GetValueOrDefault(c.ID_PhongBan.Value) : null,
+                    IdCumSanXuat = c.ID_CumSanXuat,
                     NgayTao = c.NgayTao,
                     ChiTiet = (chiTietByNoiNhan.GetValueOrDefault(c.ID) ?? new List<LC_XuatCapDanhMucChiTiet>())
                         .Select(ct => new LcXuatCapDanhMucChiTietDto
@@ -107,6 +108,7 @@ namespace dataproduct.api.Repositories.NM.LC
             existing.ID_LoaiCoc = entity.ID_LoaiCoc;
             existing.NhomTongHop = entity.NhomTongHop;
             existing.ID_PhongBan = entity.ID_PhongBan;
+            existing.ID_CumSanXuat = entity.ID_CumSanXuat;
 
             await _context.SaveChangesAsync();
             return existing;

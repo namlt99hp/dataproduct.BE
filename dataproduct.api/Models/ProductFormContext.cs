@@ -165,7 +165,8 @@ public partial class ProductFormContext : DbContext
     public DbSet<CanBangTaiRow> CanBangTaiRows => Set<CanBangTaiRow>();
     // NM.LC
     public virtual DbSet<LC_TP_ThapThan_Pheu> LC_TP_ThapThan_Pheu { get; set; }
-    public virtual DbSet<LC_TP_ThapThan_ChiTiet> LC_TP_ThapThan_ChiTiet { get; set; }
+    public virtual DbSet<LC_TP_TonPheu> LC_TP_TonPheu { get; set; }
+    public virtual DbSet<LC_TP_CapThap> LC_TP_CapThap { get; set; }
     public virtual DbSet<LC_TP_KetQuaPhanTichThan> LC_TP_KetQuaPhanTichThan { get; set; }
     public virtual DbSet<LC_TP_SuCoTrongCa> LC_TP_SuCoTrongCa { get; set; }
     public virtual DbSet<LC_TP_ChiTieuCoc> LC_TP_ChiTieuCoc { get; set; }
@@ -174,6 +175,13 @@ public partial class ProductFormContext : DbContext
     public virtual DbSet<LC_TP_NhomTieuHao> LC_TP_NhomTieuHao { get; set; }
     public virtual DbSet<LC_TP_DanhMucTieuHao> LC_TP_DanhMucTieuHao { get; set; }
     public virtual DbSet<LC_TP_TieuHao> LC_TP_TieuHao { get; set; }
+    public virtual DbSet<LC_TP_BuiCocNoiNhan> LC_TP_BuiCocNoiNhan { get; set; }
+    public virtual DbSet<LC_TP_BuiCoc> LC_TP_BuiCoc { get; set; }
+    public virtual DbSet<LC_TP_BuiCocXuat> LC_TP_BuiCocXuat { get; set; }
+    public virtual DbSet<LC_TP_CumSanXuat> LC_TP_CumSanXuat { get; set; }
+    public virtual DbSet<LC_TP_ViTriDapCoc> LC_TP_ViTriDapCoc { get; set; }
+    public virtual DbSet<LC_TP_DapCoc> LC_TP_DapCoc { get; set; }
+    public virtual DbSet<LC_TP_CocChuyenNhaSang> LC_TP_CocChuyenNhaSang { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
