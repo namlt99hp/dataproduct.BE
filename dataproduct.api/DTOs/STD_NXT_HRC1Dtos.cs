@@ -105,4 +105,49 @@ namespace dataproduct.api.DTOs
         public DateTime NgaySX { get; set; }
         public int Ca { get; set; }
     }
+
+    /// <summary>
+    /// 1 phụ liệu cần reset trong "Reset tất cả" — IsPhanBo cho biết trạng thái hiện tại
+    /// (true = đã phân bổ -> cần thu hồi, false = không phân bổ -> cần hủy "Không PB"). Mirror HRC2.
+    /// </summary>
+    public class STD_NXT_HRC1_ResetAllItemDto
+    {
+        public int PhuLieuID { get; set; }
+        public bool IsPhanBo { get; set; }
+    }
+
+    /// <summary>
+    /// Payload gộp reset tất cả phụ liệu của 1 phiếu trong 1 request — thay cho việc FE gọi
+    /// song song N request thu-hoi-phan-bo/khong-phan-bo (gây tranh lock/transient failure trên SQL Server).
+    /// </summary>
+    public class STD_NXT_HRC1_ResetAllDto
+    {
+        public Guid IdPhieu { get; set; }
+        public DateTime NgaySX { get; set; }
+        public int Ca { get; set; }
+        public List<STD_NXT_HRC1_ResetAllItemDto> Items { get; set; } = new();
+    }
+
+    public class STD_NXT_HRC1_NhapXuatTonSearchRequest
+    {
+        public DateTime TuNgay { get; set; }
+        public DateTime DenNgay { get; set; }
+    }
+
+    /// <summary>
+    /// 1 dòng so sánh giữa Tồn cuối của phiếu ca trước và Tồn đầu của phiếu ca kế tiếp,
+    /// cùng Scope (tổ hợp Lò thổi/Tinh luyện) + PhuLieuID — dùng để đối chiếu tính liên tục của sổ.
+    /// </summary>
+    public class STD_NXT_HRC1_NhapXuatTonRow
+    {
+        public DateTime? NgaySXTruoc { get; set; }
+        public int? CaTruoc { get; set; }
+        public string? PhuLieuTruoc { get; set; }
+        public decimal? TonCuoiTruoc { get; set; }
+
+        public DateTime? NgaySXSau { get; set; }
+        public int? CaSau { get; set; }
+        public string? PhuLieuSau { get; set; }
+        public decimal? TonDauSau { get; set; }
+    }
 }

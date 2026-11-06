@@ -99,6 +99,40 @@ namespace dataproduct.api.DTOs
         public int Ca { get; set; }
     }
 
+    /// <summary>
+    /// 1 phụ liệu cần reset trong "Reset tất cả" — IsPhanBo cho biết trạng thái hiện tại
+    /// (true = đã phân bổ -> cần thu hồi, false = không phân bổ -> cần hủy "Không PB").
+    /// </summary>
+    public class STD_NXT_HRC2_ResetAllItemDto
+    {
+        public int Id_HeaderKey { get; set; }
+        public bool IsPhanBo { get; set; }
+    }
+
+    /// <summary>
+    /// Payload gộp reset tất cả phụ liệu của 1 phiếu trong 1 request — thay cho việc FE gọi
+    /// song song N request thu-hoi-phan-bo/khong-phan-bo (gây tranh lock/transient failure trên SQL Server).
+    /// </summary>
+    public class STD_NXT_HRC2_ResetAllDto
+    {
+        public Guid IdPhieu { get; set; }
+        public DateTime NgaySX { get; set; }
+        public int Ca { get; set; }
+        public List<STD_NXT_HRC2_ResetAllItemDto> Items { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Request kiểm tra "Thống kê" (phụ liệu thực tế + phân bổ) có đang âm không, cho đúng công đoạn
+    /// (BieuMau: BOF/LF/RH với HRC2, BOF/LF với HRC1) trong 1 Ngày/Ca cụ thể — dùng khi "Chốt" phiếu
+    /// Tiêu hao. Dùng chung cho cả STD_NXT_HRC1Controller và STD_NXT_HRC2Controller.
+    /// </summary>
+    public class STD_NXT_CheckNegativeThongKeRequest
+    {
+        public DateTime NgaySX { get; set; }
+        public int Ca { get; set; }
+        public string BieuMau { get; set; } = "";
+    }
+
     public class STD_NXT_RelatedPhieuStatusRequest
     {
         public DateTime NgaySX { get; set; }
@@ -141,6 +175,29 @@ namespace dataproduct.api.DTOs
         public decimal? TheTich { get; set; }
         public decimal? TyTrong { get; set; }
         public int? Scope { get; set; }
+    }
+
+    public class STD_NXT_HRC2_NhapXuatTonSearchRequest
+    {
+        public DateTime TuNgay { get; set; }
+        public DateTime DenNgay { get; set; }
+    }
+
+    /// <summary>
+    /// 1 dòng so sánh giữa Tồn cuối của phiếu ca trước và Tồn đầu của phiếu ca kế tiếp,
+    /// cùng Scope (tổ hợp BOF/LF/RH) + Id_HeaderKey — dùng để đối chiếu tính liên tục của sổ.
+    /// </summary>
+    public class STD_NXT_HRC2_NhapXuatTonRow
+    {
+        public DateTime? NgaySXTruoc { get; set; }
+        public int? CaTruoc { get; set; }
+        public string? PhuLieuTruoc { get; set; }
+        public decimal? TonCuoiTruoc { get; set; }
+
+        public DateTime? NgaySXSau { get; set; }
+        public int? CaSau { get; set; }
+        public string? PhuLieuSau { get; set; }
+        public decimal? TonDauSau { get; set; }
     }
 }
 

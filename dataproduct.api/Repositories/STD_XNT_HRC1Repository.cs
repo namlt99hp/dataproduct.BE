@@ -26,6 +26,90 @@ namespace dataproduct.api.Repositories
         /// 1-5 = Lò thổi 1-5 (BOF), 6-10 = Tinh luyện 1-5 (LF).</summary>
         private static string ResolveBieuMauFromScope(int scope) => scope >= 1 && scope <= 5 ? "BOF" : "LF";
 
+        /// <summary>
+        /// Tính lại "Tổng thực tế" (tongThucTe) HIỆN TẠI của 1 PhuLieuID trong đúng Ngày/Ca, thẳng từ
+        /// nguồn Hrc1PhuLieu (chỉ dòng đo thật IsPhanBo=false) — mirror đúng công thức
+        /// DLNMHRC1Repository.GetHRC1GroupedByMaterialAsync (dùng khi bấm "Làm mới"), KHÔNG cộng
+        /// KLPhanBo (khác ComputeEffectiveTotalHrc1 dùng cho báo cáo thống kê KLTK). Dùng để phát hiện
+        /// mẻ tiêu hao đã đổi (VD: phiếu Tiêu Hao vừa được "Đề nghị hiệu chỉnh") sau lần "Làm mới" +
+        /// "Lưu" gần nhất trên Sổ Xuất-Nhập-Tồn, tránh phân bổ dựa trên ChênhLệch đã lỗi thời.
+        /// </summary>
+        private async Task<decimal> ComputeTongThucTeHienTaiAsync(DateOnly ngaySX, int ca, int phuLieuID)
+        {
+            var caByte = (byte)ca;
+            var raw = await (
+                from pl in _context.Hrc1PhuLieus
+                join tieuHao in _context.Hrc1TieuHaos on pl.MeID equals tieuHao.ID
+                where tieuHao.NgaySanXuat == ngaySX
+                      && tieuHao.Ca == caByte
+                      && tieuHao.IsDeleted == false
+                      && pl.IsDeleted == false
+                      && pl.IsPhanBo == false
+                      && pl.PhuLieuID == phuLieuID
+                      && (tieuHao.IDPhieu == null ||
+                          _context.BmPhieus.Any(p => p.Idphieu == tieuHao.IDPhieu && p.IsLock != 1 && p.IsDelete != 1))
+                select new { pl.IsManual, pl.KLPhuGia, pl.KLPhuGia_Manual }
+            ).ToListAsync();
+
+            return raw.Sum(x => x.IsManual ? (x.KLPhuGia_Manual ?? 0) : (x.KLPhuGia ?? 0));
+        }
+
+        /// <summary>
+        /// Tính lượng sử dụng thực tế HIỆN TẠI của 1 PhuLieuID theo từng công đoạn (BOF/LF) trong đúng Ngày/Ca —
+        /// cùng nguồn/điều kiện lọc với ComputeTongThucTeHienTaiAsync, tách theo BieuMau của mẻ. Dùng để chặn phân bổ
+        /// tỷ lệ > 0 cho công đoạn không còn sử dụng phụ liệu (VD: phiếu Tiêu Hao đã hiệu chỉnh chuyển lượng dùng
+        /// sang công đoạn khác nhưng tổng không đổi, nên BƯỚC 1.5 không phát hiện được).
+        /// </summary>
+        private async Task<(decimal Bof, decimal Lf)> ComputeSuDungTheoCongDoanAsync(DateOnly ngaySX, int ca, int phuLieuID)
+        {
+            var caByte = (byte)ca;
+            var raw = await (
+                from pl in _context.Hrc1PhuLieus
+                join tieuHao in _context.Hrc1TieuHaos on pl.MeID equals tieuHao.ID
+                where tieuHao.NgaySanXuat == ngaySX
+                      && tieuHao.Ca == caByte
+                      && tieuHao.IsDeleted == false
+                      && pl.IsDeleted == false
+                      && pl.IsPhanBo == false
+                      && pl.PhuLieuID == phuLieuID
+                      && (tieuHao.IDPhieu == null ||
+                          _context.BmPhieus.Any(p => p.Idphieu == tieuHao.IDPhieu && p.IsLock != 1 && p.IsDelete != 1))
+                select new { tieuHao.BieuMau, pl.IsManual, pl.KLPhuGia, pl.KLPhuGia_Manual }
+            ).ToListAsync();
+
+            decimal bof = 0, lf = 0;
+            foreach (var x in raw)
+            {
+                var value = x.IsManual ? (x.KLPhuGia_Manual ?? 0) : (x.KLPhuGia ?? 0);
+                if (string.Equals(x.BieuMau, "BOF", StringComparison.OrdinalIgnoreCase)) bof += value;
+                else if (string.Equals(x.BieuMau, "LF", StringComparison.OrdinalIgnoreCase)) lf += value;
+            }
+            return (bof, lf);
+        }
+
+        /// <summary>
+        /// Chia totalAmount cho các phần tử trong ids: (N-1) phần tử đầu nhận giá trị làm tròn
+        /// Math.Round(totalAmount / ids.Count), phần tử CUỐI nhận phần dư (totalAmount - tổng đã gán).
+        /// Đảm bảo tổng các phần luôn khớp CHÍNH XÁC totalAmount, tránh lệch tích lũy khi làm tròn
+        /// riêng lẻ từng mẻ (VD: 10 chia 3 mẻ → 3.3333 làm tròn 3 cho cả 3 mẻ → tổng chỉ còn 9).
+        /// Trả về giá trị làm tròn mỗi phần (perUnit) để lưu vào cột thống kê KLPB_*.
+        /// </summary>
+        private static decimal PhanBoKhongLechLamTron<TKey>(
+            IDictionary<TKey, decimal> target, IReadOnlyList<TKey> ids, decimal totalAmount)
+        {
+            if (ids.Count == 0) return 0;
+
+            var perUnit = Math.Round(totalAmount / ids.Count);
+            decimal sumAssigned = 0;
+            for (var i = 0; i < ids.Count - 1; i++)
+            {
+                target[ids[i]] = perUnit;
+                sumAssigned += perUnit;
+            }
+            target[ids[ids.Count - 1]] = totalAmount - sumAssigned;
+            return perUnit;
+        }
+
         /// <summary>Port đúng công thức DLNMHRC1Repository.ComputeEffectiveTotal (api/DLNMHRC1/search-thongke)
         /// sang decimal cho 1 dòng HRC1_PhuLieu.</summary>
         private static decimal? ComputeEffectiveTotalHrc1(Hrc1PhuLieu p)
@@ -697,6 +781,15 @@ namespace dataproduct.api.Repositories
                     throw new Exception("Chênh lệch không khớp với dữ liệu đã lưu. Vui lòng lưu lại trước khi phân bổ.");
                 }
 
+                // ========== BƯỚC 1.5: Kiểm tra mẻ tiêu hao có bị đổi (VD: do "Đề nghị hiệu chỉnh")
+                // sau lần "Làm mới" + "Lưu" gần nhất chưa — tránh phân bổ dựa trên ChênhLệch lỗi thời. ==========
+                var tongThucTeHienTai = await ComputeTongThucTeHienTaiAsync(ngaySXDate, entity.Ca, entity.PhuLieuID);
+                var tongThucTeDiff = Math.Abs((totalRow.TongSDTrenSoSach ?? 0) - tongThucTeHienTai);
+                if (tongThucTeDiff > 0.001m)
+                {
+                    throw new Exception("Số liệu tiêu hao mẻ đã thay đổi so với lần lưu gần nhất trên Sổ Xuất-Nhập-Tồn (có thể do phiếu Tiêu Hao vừa được hiệu chỉnh). Vui lòng bấm \"Làm mới\" rồi \"Lưu\" lại Sổ Xuất-Nhập-Tồn trước khi phân bổ.");
+                }
+
                 // ========== BƯỚC 2: Lấy tất cả mẻ trong HRC1_TieuHao theo ngày/ca ==========
                 // Loại dòng thuộc phiếu đã khóa (IsLock=1 — clone "Đề nghị hiệu chỉnh" đang mở), mirror
                 // DLNMHRC1Repository.GetAllAsync — tránh đếm đôi mẻ khi tính số mẻ để phân bổ chênh lệch.
@@ -754,6 +847,25 @@ namespace dataproduct.api.Repositories
                     if (tyLeLF == null) tyLeLF = tyLeRecord?.TyLeLF;
                 }
 
+                // ========== BƯỚC 5.0: Validate tỷ lệ theo lượng sử dụng thực tế HIỆN TẠI từng công đoạn ==========
+                // Không tin số liệu trên màn hình (có thể lỗi thời nếu phiếu Tiêu Hao vừa hiệu chỉnh mà Sổ XNT chưa "Làm mới").
+                if (tyLeBOF != null || tyLeLF != null)
+                {
+                    const string lamMoiHint = "Số liệu phiếu Tiêu Hao có thể đã thay đổi, vui lòng bấm \"Làm mới\" rồi \"Lưu\" lại Sổ Xuất-Nhập-Tồn trước khi phân bổ.";
+                    var (suDungBof, suDungLf) = await ComputeSuDungTheoCongDoanAsync(ngaySXDate, entity.Ca, entity.PhuLieuID);
+
+                    if (suDungBof == 0 && suDungLf == 0)
+                        throw new Exception($"Phụ liệu này hiện không được sử dụng ở công đoạn nào trong ca, không thể phân bổ. {lamMoiHint}");
+                    if (suDungBof == 0 && tyLeBOF is decimal vBof && vBof != 0)
+                        throw new Exception($"Phụ liệu này hiện không sử dụng ở BOF nhưng tỷ lệ BOF đang là {vBof}%. {lamMoiHint}");
+                    if (suDungLf == 0 && tyLeLF is decimal vLf && vLf != 0)
+                        throw new Exception($"Phụ liệu này hiện không sử dụng ở LF nhưng tỷ lệ LF đang là {vLf}%. {lamMoiHint}");
+
+                    var tongTyLe = (tyLeBOF ?? 0) + (tyLeLF ?? 0);
+                    if (Math.Abs(tongTyLe - 100) > 0.001m)
+                        throw new Exception($"Tổng tỷ lệ phân bổ phải bằng 100% (hiện tại: {tongTyLe}%).");
+                }
+
                 Dictionary<int, decimal> klPhanBoByMe;
                 decimal? klPerBofToPersist = null;
                 decimal? klPerLFToPersist = null;
@@ -764,11 +876,13 @@ namespace dataproduct.api.Repositories
                         .Where(id => meLookupAll.TryGetValue(id, out var d) &&
                                      d.BieuMau != null &&
                                      d.BieuMau.Equals("BOF", StringComparison.OrdinalIgnoreCase))
+                        .OrderBy(id => id)
                         .ToList();
                     var lfMeIds = meIds
                         .Where(id => meLookupAll.TryGetValue(id, out var d) &&
                                      d.BieuMau != null &&
                                      d.BieuMau.Equals("LF", StringComparison.OrdinalIgnoreCase))
+                        .OrderBy(id => id)
                         .ToList();
 
                     if (bofMeIds.Count == 0 && tyLeBOF is decimal tBof && tBof != 0)
@@ -781,9 +895,7 @@ namespace dataproduct.api.Repositories
                     if (bofMeIds.Any() && tyLeBOF is decimal tyLeBOFValue && tyLeBOFValue > 0)
                     {
                         var bofAmount = entity.ChenhLech * tyLeBOFValue / 100;
-                        var klPerBof = Math.Round(bofAmount / bofMeIds.Count);
-                        klPerBofToPersist = klPerBof;
-                        foreach (var id in bofMeIds) klPhanBoByMe[id] = klPerBof;
+                        klPerBofToPersist = PhanBoKhongLechLamTron(klPhanBoByMe, bofMeIds, bofAmount);
                     }
                     else
                     {
@@ -794,9 +906,7 @@ namespace dataproduct.api.Repositories
                     if (lfMeIds.Any() && tyLeLF is decimal tyLeLFValue && tyLeLFValue > 0)
                     {
                         var lfAmount = entity.ChenhLech * tyLeLFValue / 100;
-                        var klPerLF = Math.Round(lfAmount / lfMeIds.Count);
-                        klPerLFToPersist = klPerLF;
-                        foreach (var id in lfMeIds) klPhanBoByMe[id] = klPerLF;
+                        klPerLFToPersist = PhanBoKhongLechLamTron(klPhanBoByMe, lfMeIds, lfAmount);
                     }
                     else
                     {
@@ -892,60 +1002,67 @@ namespace dataproduct.api.Repositories
             }
         }
 
+        /// <summary>
+        /// Phần thân thực hiện thu hồi phân bổ cho 1 phụ liệu — không gọi CheckPhieuChotAsync/SaveChangesAsync
+        /// để ThuHoiPhanBoAsync (1 dòng) và ResetAllAsync (N dòng, 1 transaction) có thể tái dùng chung.
+        /// </summary>
+        private async Task ThuHoiPhanBoCoreAsync(Guid idPhieu, DateTime ngaySX, int ca, int phuLieuID)
+        {
+            var totalRow = await _context.STD_NXT_TOTAL_HRC1s
+                .FirstOrDefaultAsync(x =>
+                    x.PhuLieuID == phuLieuID &&
+                    x.NgaySX == ngaySX &&
+                    x.Ca == ca &&
+                    x.Id_Phieu == idPhieu);
+
+            if (totalRow == null)
+            {
+                throw new Exception("Không tìm thấy dữ liệu tổng hợp để thu hồi phân bổ. Vui lòng lưu trước.");
+            }
+
+            if (totalRow.HasPhanBo != true)
+            {
+                throw new Exception("Dòng này chưa được phân bổ hoặc đã thu hồi trước đó.");
+            }
+
+            var ngaySXDate = DateOnly.FromDateTime(ngaySX);
+            var caByte = (byte)ca;
+
+            // Loại dòng thuộc phiếu đã khóa (mirror GetAllAsync) để chỉ thu hồi đúng dòng đang hoạt động.
+            var phanBoRecords = await (
+                from pl in _context.Hrc1PhuLieus
+                join tieuHao in _context.Hrc1TieuHaos on pl.MeID equals tieuHao.ID
+                where pl.PhuLieuID == phuLieuID &&
+                      pl.IsPhanBo == true &&
+                      tieuHao.NgaySanXuat == ngaySXDate &&
+                      tieuHao.Ca == caByte &&
+                      tieuHao.IsDeleted == false &&
+                      (tieuHao.IDPhieu == null ||
+                          _context.BmPhieus.Any(p => p.Idphieu == tieuHao.IDPhieu && p.IsLock != 1 && p.IsDelete != 1))
+                select pl
+            ).ToListAsync();
+
+            if (phanBoRecords.Any())
+            {
+                _context.Hrc1PhuLieus.RemoveRange(phanBoRecords);
+            }
+
+            totalRow.HasPhanBo = null;
+            totalRow.TyLeBOF = null;
+            totalRow.TyLeLF = null;
+            totalRow.KLPB_BOF = null;
+            totalRow.KLPB_LF = null;
+            // Reset chờ bấm Phân bổ/Không phân bổ lại — không tính toán lại ở đây (theo yêu cầu người dùng).
+            totalRow.KLTK_BOF = null;
+            totalRow.KLTK_LF = null;
+        }
+
         public async Task<bool> ThuHoiPhanBoAsync(STD_NXT_HRC1_PhanBoDto entity)
         {
             try
             {
                 await CheckPhieuChotAsync(entity.NgaySX, entity.Ca);
-
-                var totalRow = await _context.STD_NXT_TOTAL_HRC1s
-                    .FirstOrDefaultAsync(x =>
-                        x.PhuLieuID == entity.PhuLieuID &&
-                        x.NgaySX == entity.NgaySX &&
-                        x.Ca == entity.Ca &&
-                        x.Id_Phieu == entity.IdPhieu);
-
-                if (totalRow == null)
-                {
-                    throw new Exception("Không tìm thấy dữ liệu tổng hợp để thu hồi phân bổ. Vui lòng lưu trước.");
-                }
-
-                if (totalRow.HasPhanBo != true)
-                {
-                    throw new Exception("Dòng này chưa được phân bổ hoặc đã thu hồi trước đó.");
-                }
-
-                var ngaySXDate = DateOnly.FromDateTime(entity.NgaySX);
-                var caByte = (byte)entity.Ca;
-
-                // Loại dòng thuộc phiếu đã khóa (mirror GetAllAsync) để chỉ thu hồi đúng dòng đang hoạt động.
-                var phanBoRecords = await (
-                    from pl in _context.Hrc1PhuLieus
-                    join tieuHao in _context.Hrc1TieuHaos on pl.MeID equals tieuHao.ID
-                    where pl.PhuLieuID == entity.PhuLieuID &&
-                          pl.IsPhanBo == true &&
-                          tieuHao.NgaySanXuat == ngaySXDate &&
-                          tieuHao.Ca == caByte &&
-                          tieuHao.IsDeleted == false &&
-                          (tieuHao.IDPhieu == null ||
-                              _context.BmPhieus.Any(p => p.Idphieu == tieuHao.IDPhieu && p.IsLock != 1 && p.IsDelete != 1))
-                    select pl
-                ).ToListAsync();
-
-                if (phanBoRecords.Any())
-                {
-                    _context.Hrc1PhuLieus.RemoveRange(phanBoRecords);
-                }
-
-                totalRow.HasPhanBo = null;
-                totalRow.TyLeBOF = null;
-                totalRow.TyLeLF = null;
-                totalRow.KLPB_BOF = null;
-                totalRow.KLPB_LF = null;
-                // Reset chờ bấm Phân bổ/Không phân bổ lại — không tính toán lại ở đây (theo yêu cầu người dùng).
-                totalRow.KLTK_BOF = null;
-                totalRow.KLTK_LF = null;
-
+                await ThuHoiPhanBoCoreAsync(entity.IdPhieu, entity.NgaySX, entity.Ca, entity.PhuLieuID);
                 await _context.SaveChangesAsync();
                 return true;
             }
@@ -955,37 +1072,127 @@ namespace dataproduct.api.Repositories
             }
         }
 
+        /// <summary>
+        /// Đối chiếu tính liên tục của sổ Xuất-Nhập-Tồn: với mỗi Scope (tổ hợp Lò/TL), ghép 2 PHIẾU
+        /// liên tiếp theo thời gian (NgaySX, Ca) trong khoảng lọc, rồi full-outer-join theo PhuLieuID
+        /// giữa 2 phiếu đó — bên trái lấy TonCuoiCa (phiếu ca trước), bên phải lấy TonDauCa (phiếu ca
+        /// sau). Phụ liệu chỉ có ở 1 trong 2 phiếu (mới phát sinh, hoặc không còn dùng nữa) thì bên
+        /// còn lại để trống thay vì bị bỏ qua khỏi kết quả.
+        /// </summary>
+        public async Task<List<STD_NXT_HRC1_NhapXuatTonRow>> GetNhapXuatTonAsync(STD_NXT_HRC1_NhapXuatTonSearchRequest request)
+        {
+            var tuNgay = request.TuNgay.Date;
+            var denNgayExclusive = request.DenNgay.Date.AddDays(1);
+
+            var rows = await (
+                from d in _context.STD_XUAT_NHAP_TON_HRC1s
+                join p in _context.BmPhieus on d.Id_Phieu equals p.Idphieu
+                where p.IsDelete != 1
+                      && d.NgaySX >= tuNgay
+                      && d.NgaySX < denNgayExclusive
+                select d
+            ).ToListAsync();
+
+            var buffer = new List<(STD_NXT_HRC1_NhapXuatTonRow Row, DateTime SortDate, int SortCa)>();
+
+            foreach (var scopeGroup in rows.GroupBy(x => x.Scope))
+            {
+                var phieuList = scopeGroup
+                    .GroupBy(x => x.Id_Phieu)
+                    .Select(g => new
+                    {
+                        NgaySX = g.First().NgaySX,
+                        Ca = g.First().Ca,
+                        ByPhuLieu = g.ToDictionary(x => x.PhuLieuID),
+                    })
+                    .OrderBy(x => x.NgaySX)
+                    .ThenBy(x => x.Ca)
+                    .ToList();
+
+                for (var i = 1; i < phieuList.Count; i++)
+                {
+                    var prevPhieu = phieuList[i - 1];
+                    var currPhieu = phieuList[i];
+
+                    var allPhuLieuIds = prevPhieu.ByPhuLieu.Keys
+                        .Union(currPhieu.ByPhuLieu.Keys)
+                        .OrderBy(id =>
+                        {
+                            var thuTu = (prevPhieu.ByPhuLieu.TryGetValue(id, out var pv) ? pv.ThuTu : null)
+                                        ?? (currPhieu.ByPhuLieu.TryGetValue(id, out var cv) ? cv.ThuTu : null);
+                            return thuTu ?? int.MaxValue;
+                        })
+                        .ThenBy(id => id);
+
+                    foreach (var phuLieuId in allPhuLieuIds)
+                    {
+                        prevPhieu.ByPhuLieu.TryGetValue(phuLieuId, out var prevDetail);
+                        currPhieu.ByPhuLieu.TryGetValue(phuLieuId, out var currDetail);
+
+                        var row = new STD_NXT_HRC1_NhapXuatTonRow
+                        {
+                            NgaySXTruoc = prevDetail != null ? prevPhieu.NgaySX : null,
+                            CaTruoc = prevDetail != null ? prevPhieu.Ca : null,
+                            PhuLieuTruoc = prevDetail?.TenNguyenLieu,
+                            TonCuoiTruoc = prevDetail?.TonCuoiCa,
+
+                            NgaySXSau = currDetail != null ? currPhieu.NgaySX : null,
+                            CaSau = currDetail != null ? currPhieu.Ca : null,
+                            PhuLieuSau = currDetail?.TenNguyenLieu,
+                            TonDauSau = currDetail?.TonDauCa,
+                        };
+
+                        buffer.Add((row, currPhieu.NgaySX, currPhieu.Ca));
+                    }
+                }
+            }
+
+            return buffer
+                .OrderBy(x => x.SortDate)
+                .ThenBy(x => x.SortCa)
+                .Select(x => x.Row)
+                .ToList();
+        }
+
+        /// <summary>
+        /// Phần thân thực hiện "Không phân bổ" cho 1 phụ liệu — không gọi CheckPhieuChotAsync/SaveChangesAsync,
+        /// mirror ThuHoiPhanBoCoreAsync để KhongPhanBoAsync (1 dòng) và ResetAllAsync (N dòng) tái dùng chung.
+        /// </summary>
+        private async Task KhongPhanBoCoreAsync(Guid idPhieu, int phuLieuID, DateTime ngaySX, int ca)
+        {
+            var totalRow = await _context.STD_NXT_TOTAL_HRC1s
+                .FirstOrDefaultAsync(x =>
+                    x.PhuLieuID == phuLieuID &&
+                    x.Id_Phieu == idPhieu);
+
+            if (totalRow == null)
+            {
+                throw new Exception("Không tìm thấy dữ liệu tổng hợp. Vui lòng lưu trước.");
+            }
+            if (totalRow.HasPhanBo == false)
+            {
+                // Bấm lại lần 2 = hủy quyết định "Không phân bổ" — reset chờ quyết định lại, mirror
+                // ThuHoiPhanBoAsync.
+                totalRow.HasPhanBo = null;
+                totalRow.KLTK_BOF = null;
+                totalRow.KLTK_LF = null;
+            }
+            else
+            {
+                totalRow.HasPhanBo = false;
+                var (klTkBof, klTkLf) = await ComputeKLTKAsync(
+                    DateOnly.FromDateTime(ngaySX), ca, phuLieuID);
+                totalRow.KLTK_BOF = klTkBof;
+                totalRow.KLTK_LF = klTkLf;
+            }
+        }
+
         public async Task<bool> KhongPhanBoAsync(STD_NXT_HRC1_KhongPhanBoDto entity)
         {
             try
             {
                 await CheckPhieuChotAsync(entity.NgaySX, entity.Ca);
-
-                var totalRow = await _context.STD_NXT_TOTAL_HRC1s
-                    .FirstOrDefaultAsync(x =>
-                        x.PhuLieuID == entity.PhuLieuID &&
-                        x.Id_Phieu == entity.IdPhieu);
-
-                if (totalRow == null)
-                {
-                    throw new Exception("Không tìm thấy dữ liệu tổng hợp. Vui lòng lưu trước.");
-                }
-                if (totalRow.HasPhanBo == false)
-                {
-                    // Bấm lại lần 2 = hủy quyết định "Không phân bổ" — reset chờ quyết định lại, mirror
-                    // ThuHoiPhanBoAsync.
-                    totalRow.HasPhanBo = null;
-                    totalRow.KLTK_BOF = null;
-                    totalRow.KLTK_LF = null;
-                }
-                else
-                {
-                    totalRow.HasPhanBo = false;
-                    var (klTkBof, klTkLf) = await ComputeKLTKAsync(
-                        DateOnly.FromDateTime(entity.NgaySX), entity.Ca, entity.PhuLieuID);
-                    totalRow.KLTK_BOF = klTkBof;
-                    totalRow.KLTK_LF = klTkLf;
-                }
+                await KhongPhanBoCoreAsync(entity.IdPhieu, entity.PhuLieuID, entity.NgaySX, entity.Ca);
                 await _context.SaveChangesAsync();
                 return true;
             }
@@ -993,6 +1200,73 @@ namespace dataproduct.api.Repositories
             {
                 throw new Exception(ex.Message);
             }
+        }
+
+        /// <summary>
+        /// Reset tất cả phụ liệu đã xử lý (đã phân bổ/không phân bổ) của 1 phiếu trong 1 request duy nhất —
+        /// chạy tuần tự trên cùng 1 DbContext + 1 transaction, thay cho việc FE gọi song song N request
+        /// thu-hoi-phan-bo/khong-phan-bo (từng request mở DbContext/transaction riêng, cùng ghi đè
+        /// STD_NXT_TOTAL_HRC1s/Hrc1PhuLieus theo NgaySX+Ca -> tranh lock -> lỗi transient trên SQL Server).
+        /// </summary>
+        public async Task<bool> ResetAllAsync(STD_NXT_HRC1_ResetAllDto request)
+        {
+            if (request.Items == null || request.Items.Count == 0) return true;
+
+            await CheckPhieuChotAsync(request.NgaySX, request.Ca);
+
+            await using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                foreach (var item in request.Items)
+                {
+                    if (item.IsPhanBo)
+                    {
+                        await ThuHoiPhanBoCoreAsync(request.IdPhieu, request.NgaySX, request.Ca, item.PhuLieuID);
+                    }
+                    else
+                    {
+                        await KhongPhanBoCoreAsync(request.IdPhieu, item.PhuLieuID, request.NgaySX, request.Ca);
+                    }
+                }
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                throw new Exception(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Trả về tên các phụ liệu có "Thống kê" (KLTK_BOF/LF — tổng phụ liệu thực tế + phân bổ, cùng
+        /// công thức dùng ở trang Thống kê Tiêu hao) đang ÂM cho đúng công đoạn (bieuMau: BOF/LF) trong
+        /// Ngày/Ca truyền vào. Mirror STD_XNT_HRC2Repository.GetNegativeThongKePhuLieuAsync — dùng để chặn
+        /// "Chốt" phiếu Tiêu hao khi phân bổ chênh lệch âm vượt quá lượng phụ liệu thực tế đã dùng.
+        /// Chỉ các phụ liệu ĐÃ xử lý (Phân bổ/Không PB) mới có KLTK_* (null = chưa xử lý, không thể âm).
+        /// </summary>
+        public async Task<List<string>> GetNegativeThongKePhuLieuAsync(DateTime ngaySX, int ca, string bieuMau)
+        {
+            var rows = await _context.STD_NXT_TOTAL_HRC1s
+                .Where(x => x.NgaySX == ngaySX && x.Ca == ca)
+                .Select(x => new { x.TenNguyenLieu, x.KLTK_BOF, x.KLTK_LF })
+                .ToListAsync();
+
+            Func<decimal?, bool> isNegative = v => v.HasValue && v.Value < 0;
+
+            return rows
+                .Where(x => bieuMau switch
+                {
+                    "BOF" => isNegative(x.KLTK_BOF),
+                    "LF" => isNegative(x.KLTK_LF),
+                    _ => false,
+                })
+                .Select(x => x.TenNguyenLieu ?? "")
+                .Where(ten => ten != "")
+                .Distinct()
+                .ToList();
         }
     }
 }

@@ -53,6 +53,9 @@ namespace dataproduct.api.ResponseModels
         public decimal? KLPB_BOF { get; set; }
         public decimal? KLPB_TL { get; set; }
         public decimal? KLPB_RH { get; set; }
+        public decimal? KLTK_BOF { get; set; }
+        public decimal? KLTK_LF { get; set; }
+        public decimal? KLTK_RH { get; set; }
     }
 }
 

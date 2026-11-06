@@ -777,10 +777,15 @@ namespace dataproduct.api.Services
                 {
                     bool isManualCol = pl.PhuLieuID == null && pl.IsAddManual == true && pl.ID_HeaderKey.HasValue;
 
+                    // PHẢI loại IsPhanBo==true khỏi match: 1 PhuLieuID có thể có 2 record cùng MeID — record
+                    // "đo thật"/sửa tay (IsPhanBo=false, cái cần upsert ở đây) và record "phân bổ chênh lệch"
+                    // riêng (IsPhanBo=true, ghi bởi STD_XNT_HRC1Repository.PhanBoAsync). Thiếu điều kiện này,
+                    // FirstOrDefault có thể khớp nhầm record phân bổ và vô tình ghi đè/khoá nhầm nó khi user
+                    // chỉ đang lưu lại giá trị "đo thật" của phụ liệu thêm tay.
                     Hrc1PhuLieu? existingPl = isManualCol
                         ? existingPL.FirstOrDefault(x =>
                             x.MeID == me.ID && x.PhuLieuID == null && x.IsAddManual && x.ID_HeaderKey == pl.ID_HeaderKey)
-                        : existingPL.FirstOrDefault(x => x.MeID == me.ID && x.PhuLieuID == pl.PhuLieuID);
+                        : existingPL.FirstOrDefault(x => x.MeID == me.ID && x.PhuLieuID == pl.PhuLieuID && x.IsPhanBo == false);
 
                     // "Xóa manual về ban đầu": isManual=true nhưng không còn giá trị nào để lưu
                     bool isClearManual = pl.IsManual == true
