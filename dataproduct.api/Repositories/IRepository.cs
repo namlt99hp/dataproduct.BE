@@ -169,7 +169,7 @@ namespace dataproduct.api.Repositories
     public interface ISTD_NXT_HRC1Repository
     {
         Task<STD_NXT_HRC1_UpsertResponse> UpsertAsync(STD_NXT_HRC1_UpsertDto entity);
-        Task InitializeHRC1_STD_NXTAsync(BmPhieu phieu);
+        Task InitializeHRC1_STD_NXTAsync(BmPhieu phieu, bool fallbackToDefaultWhenPrevMissing = false);
         Task GetHRC1FilterInitAsync(InitXuatNhapTonHRC1Request request);
         Task<STD_NXT_HRC1_GetDetailResponse> GetByPhieuIdAsync(Guid phieuId);
         Task<STD_NXT_RelatedPhieuStatusResponse> GetRelatedPhieuStatusesAsync(STD_NXT_RelatedPhieuStatusRequest request);

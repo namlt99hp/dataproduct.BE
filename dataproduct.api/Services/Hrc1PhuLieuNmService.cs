@@ -11,6 +11,7 @@ namespace dataproduct.api.Services
         public int? ThuTu_Excel_BOF { get; set; }
         public int? ThuTu_Excel_LF { get; set; }
         public string? MaVatTuChiPhi { get; set; }
+        public byte? LoaiPL { get; set; }
     }
 
     public class Hrc1PhuLieuNmService
@@ -41,6 +42,7 @@ namespace dataproduct.api.Services
                 ThuTu_Excel_BOF = dto.ThuTu_Excel_BOF,
                 ThuTu_Excel_LF = dto.ThuTu_Excel_LF,
                 MaVatTuChiPhi = string.IsNullOrWhiteSpace(dto.MaVatTuChiPhi) ? null : dto.MaVatTuChiPhi.Trim(),
+                LoaiPL = dto.LoaiPL,
                 // Phụ liệu thêm qua trang quản lý luôn là thêm tay, không gắn với cột view nguồn (TenPhuLieuNM),
                 // và không đánh dấu IsNM — chỉ SP_Sync_HRC1_PhuLieu mới ghi nhận là dữ liệu tự động.
                 TenPhuLieuNM = null,
@@ -66,6 +68,7 @@ namespace dataproduct.api.Services
             existing.ThuTu_Excel_BOF = dto.ThuTu_Excel_BOF;
             existing.ThuTu_Excel_LF = dto.ThuTu_Excel_LF;
             existing.MaVatTuChiPhi = string.IsNullOrWhiteSpace(dto.MaVatTuChiPhi) ? null : dto.MaVatTuChiPhi.Trim();
+            existing.LoaiPL = dto.LoaiPL;
             await _repo.UpdateAsync(existing);
             return true;
         }

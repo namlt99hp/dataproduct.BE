@@ -32,6 +32,17 @@ public partial class Hrc1PhuLieuNm
     /// <summary>Mã vật tư bên hệ thống chi phí (ChiPhi_ProductionData.MaVatTu/MaChiPhi). NULL = không feed
     /// phụ liệu này sang hệ thống chi phí. Xem .claude/chiphitieuhao-hrc1.md.</summary>
     public string? MaVatTuChiPhi { get; set; }
+    /// <summary>Nhóm hiển thị cột phụ liệu trên bảng Tiêu hao Tinh luyện LF (TaoTieuHaoTinhLuyenLF.tsx/
+    /// ChiTietLF.tsx) — BOF chỉ có 1 nhóm cột duy nhất nên không dùng field này. Xem <see cref="LoaiPhuLieuLF"/>.</summary>
+    public byte? LoaiPL { get; set; }
     public DateTime NgayTao { get; set; } = DateTime.Now;
     public string? NguoiTao { get; set; }
+}
+
+/// <summary>Giá trị cho Hrc1PhuLieuNm.LoaiPL — 2 nhóm cột phụ liệu trên bảng LF, mirror đúng 2 nhóm
+/// trên biểu mẫu giấy BM.14/QT.05.10 ("Chất hợp kim hóa" / "Phụ gia & chất khử oxy").</summary>
+public enum LoaiPhuLieuLF : byte
+{
+    KimLoai = 1,
+    PhuGia = 2,
 }

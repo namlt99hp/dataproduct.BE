@@ -331,7 +331,7 @@ namespace dataproduct.api.Repositories
             }
         }
 
-        public async Task InitializeHRC1_STD_NXTAsync(BmPhieu phieu)
+        public async Task InitializeHRC1_STD_NXTAsync(BmPhieu phieu, bool fallbackToDefaultWhenPrevMissing = false)
         {
             var ngaySx = phieu.NgaySX?.ToDateTime(TimeOnly.MinValue) ?? DateTime.Now;
             var ca = phieu.Ca.Value;
@@ -353,11 +353,12 @@ namespace dataproduct.api.Repositories
                 .Select(x => x.Idphieu)
                 .FirstOrDefaultAsync();
 
-            if (prevPhieu == default)
+            // Không có phiếu trước đó (hoặc phiếu trước có nhưng không có dữ liệu phụ liệu, ví dụ do tạo lỗi
+            // giữa chừng) → dùng danh sách HRC1_PhuLieuNM mặc định (IsUsedNXT = true), theo ThuTu_Excel_BOF
+            // khai báo trong danh mục (cột ThuTu đơn cũ đã bỏ; nhánh này áp dụng chung cho cả 10 tổ hợp
+            // BOF/LF nên không tách riêng theo BieuMau ở bước init này).
+            async Task LoadDefaultSourceAsync()
             {
-                // Không có phiếu trước đó → dùng danh sách HRC1_PhuLieuNM mặc định (IsUsedNXT = true),
-                // theo ThuTu_Excel_BOF khai báo trong danh mục (cột ThuTu đơn cũ đã bỏ; nhánh này áp dụng
-                // chung cho cả 10 tổ hợp BOF/LF nên không tách riêng theo BieuMau ở bước init này).
                 var defaults = await _context.Hrc1PhuLieuNms
                     .Where(x => x.IsUsedNXT == true)
                     .OrderBy(x => x.ThuTu_Excel_BOF ?? int.MaxValue)
@@ -378,6 +379,11 @@ namespace dataproduct.api.Repositories
                 }
 
                 allPhuLieuIds = defaults.Select(x => x.ID).ToList();
+            }
+
+            if (prevPhieu == default)
+            {
+                await LoadDefaultSourceAsync();
             }
             else
             {
@@ -402,26 +408,38 @@ namespace dataproduct.api.Repositories
                     .ToDictionary(x => x.PhuLieuID, x => (x.TyLeBOF, x.TyLeLF));
 
                 if (!prevRecords.Any())
-                    throw new Exception($"Phiếu ca trước không có dữ liệu phụ liệu (IdPhieu: {prevPhieu})");
+                {
+                    // Phiếu ca trước không có dữ liệu phụ liệu (ví dụ phiếu đó tạo lỗi) → không throw ở đây,
+                    // vì các phiếu sau luôn trỏ lại đúng phiếu trước gần nhất nên sẽ kẹt mãi không tạo được.
+                    // Luồng tự động (tạo/sửa phiếu) chỉ bỏ qua lần init này, giữ nguyên dữ liệu hiện có của
+                    // phiếu (nếu có) — không tự ý áp danh mục mặc định. Chỉ khi người dùng chủ động bấm
+                    // "Làm mới" (fallbackToDefaultWhenPrevMissing = true) mới fallback dùng danh mục mặc định.
+                    if (!fallbackToDefaultWhenPrevMissing)
+                        return;
 
-                // Group theo Scope → dedup theo PhuLieuID trong mỗi Scope, giữ nguyên thứ tự
-                // hiển thị (ThuTu) mà người dùng đã sắp xếp ở ca trước
-                sourceByScope = prevRecords
-                    .GroupBy(x => x.Scope)
-                    .ToDictionary(
-                        g => g.Key,
-                        g => g
-                            .OrderBy(x => x.ThuTu ?? int.MaxValue)
-                            .GroupBy(x => x.PhuLieuID)
-                            .Select(hg => hg.First())
-                            .Select((x, idx) => (x.PhuLieuID, x.TenNguyenLieu, x.TyTrong, x.IDSilo, (int?)idx))
-                            .ToList()
-                    );
+                    await LoadDefaultSourceAsync();
+                }
+                else
+                {
+                    // Group theo Scope → dedup theo PhuLieuID trong mỗi Scope, giữ nguyên thứ tự
+                    // hiển thị (ThuTu) mà người dùng đã sắp xếp ở ca trước
+                    sourceByScope = prevRecords
+                        .GroupBy(x => x.Scope)
+                        .ToDictionary(
+                            g => g.Key,
+                            g => g
+                                .OrderBy(x => x.ThuTu ?? int.MaxValue)
+                                .GroupBy(x => x.PhuLieuID)
+                                .Select(hg => hg.First())
+                                .Select((x, idx) => (x.PhuLieuID, x.TenNguyenLieu, x.TyTrong, x.IDSilo, (int?)idx))
+                                .ToList()
+                        );
 
-                allPhuLieuIds = prevRecords
-                    .Select(x => x.PhuLieuID)
-                    .Distinct()
-                    .ToList();
+                    allPhuLieuIds = prevRecords
+                        .Select(x => x.PhuLieuID)
+                        .Distinct()
+                        .ToList();
+                }
             }
 
             // -------------------------------------------------------
@@ -878,12 +896,33 @@ namespace dataproduct.api.Repositories
                                      d.BieuMau.Equals("BOF", StringComparison.OrdinalIgnoreCase))
                         .OrderBy(id => id)
                         .ToList();
-                    var lfMeIds = meIds
+                    var lfMeIdsRaw = meIds
                         .Where(id => meLookupAll.TryGetValue(id, out var d) &&
                                      d.BieuMau != null &&
                                      d.BieuMau.Equals("LF", StringComparison.OrdinalIgnoreCase))
                         .OrderBy(id => id)
                         .ToList();
+
+                    // Dedupe mẻ tinh luyện trùng nhau TRONG CÙNG ca/ngày (cùng MeThoi, bỏ qua Hrc1TieuHao.IsTrungMeThoi
+                    // vì cờ đó tính toàn cục không giới hạn ca/ngày nên không đáng tin cho mục đích này) — chỉ giữ
+                    // 1 đại diện/nhóm là mẻ có Id nhỏ nhất (được nhận trước) để chia lfAmount; MeThoi null/rỗng không
+                    // bị coi là trùng với nhau. Các mẻ trùng còn lại trong nhóm nhận KLPhuGia=0 (BƯỚC 8).
+                    var lfMeIds = new List<int>();
+                    var lfDuplicateIds = new List<int>();
+                    foreach (var group in lfMeIdsRaw.GroupBy(id => meLookupAll[id].MeThoi))
+                    {
+                        if (string.IsNullOrWhiteSpace(group.Key))
+                        {
+                            lfMeIds.AddRange(group);
+                        }
+                        else
+                        {
+                            // group giữ nguyên thứ tự của lfMeIdsRaw (đã OrderBy Id tăng dần) -> First() = Id nhỏ nhất
+                            lfMeIds.Add(group.First());
+                            lfDuplicateIds.AddRange(group.Skip(1));
+                        }
+                    }
+                    lfMeIds.Sort();
 
                     if (bofMeIds.Count == 0 && tyLeBOF is decimal tBof && tBof != 0)
                         throw new Exception($"Không có mẻ BOF trong ca này nhưng tỷ lệ BOF đang là {tBof}%. Vui lòng điều chỉnh lại tỷ lệ.");
@@ -891,6 +930,7 @@ namespace dataproduct.api.Repositories
                         throw new Exception($"Không có mẻ LF trong ca này nhưng tỷ lệ LF đang là {tLF}%. Vui lòng điều chỉnh lại tỷ lệ.");
 
                     klPhanBoByMe = new Dictionary<int, decimal>();
+                    foreach (var dupId in lfDuplicateIds) klPhanBoByMe[dupId] = 0;
 
                     if (bofMeIds.Any() && tyLeBOF is decimal tyLeBOFValue && tyLeBOFValue > 0)
                     {

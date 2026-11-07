@@ -72,16 +72,45 @@ namespace dataproduct.api.Repositories
                 .Where(pl => meIds.Contains(pl.ID_MeThoi) &&
                     ((pl.ID_PhuLieu.HasValue && mappedPhuLieuIds.Contains(pl.ID_PhuLieu.Value)) ||
                      pl.ID_HeaderKey == idHeaderKey))
+                .Select(pl => new { pl.ID_MeThoi, pl.IsPhanBo, pl.IsManual, pl.KLPhuGia, pl.KLPhuGia_Manual })
                 .ToListAsync();
 
             decimal? bofTotal = null, lfTotal = null, rhTotal = null;
-            foreach (var pl in plRows)
-            {
-                var effective = pl.IsManual == true ? pl.KLPhuGia_Manual : pl.KLPhuGia;
-                if (!effective.HasValue) continue;
-                if (!bieuMauByMeId.TryGetValue(pl.ID_MeThoi, out var bieuMau) || bieuMau == null) continue;
 
-                var value = (decimal)effective.Value;
+            // Gom theo mẻ — mirror sp_GetHRC2GroupedByMaterial (HasManual/ManualValue): nếu mẻ có dòng
+            // đo thật (IsPhanBo != true) bị Manual, dùng giá trị Manual đó thay cho cả mẻ, không cộng
+            // thêm các dòng Auto khác cùng mẻ. Dòng phân bổ (IsPhanBo = true) cộng thẳng riêng, không áp
+            // quy tắc Manual override (mỗi mẻ chỉ có 1 dòng phân bổ, không có khái niệm ghi đè).
+            foreach (var group in plRows.GroupBy(x => x.ID_MeThoi))
+            {
+                if (!bieuMauByMeId.TryGetValue(group.Key, out var bieuMau) || bieuMau == null) continue;
+
+                var doThatRows = group.Where(x => x.IsPhanBo != true).ToList();
+                var phanBoRows = group.Where(x => x.IsPhanBo == true).ToList();
+
+                decimal value = 0;
+                var hasValue = false;
+
+                if (doThatRows.Count > 0)
+                {
+                    var manualValues = doThatRows
+                        .Where(x => x.IsManual == true && x.KLPhuGia_Manual.HasValue)
+                        .Select(x => x.KLPhuGia_Manual!.Value);
+
+                    value += manualValues.Any()
+                        ? (decimal)manualValues.Max()
+                        : (decimal)doThatRows.Sum(x => x.KLPhuGia ?? 0);
+                    hasValue = true;
+                }
+
+                if (phanBoRows.Count > 0)
+                {
+                    value += (decimal)phanBoRows.Sum(x => x.KLPhuGia ?? 0);
+                    hasValue = true;
+                }
+
+                if (!hasValue) continue;
+
                 if (bieuMau.StartsWith("BOF", StringComparison.OrdinalIgnoreCase))
                     bofTotal = (bofTotal ?? 0) + value;
                 else if (bieuMau.StartsWith("LF", StringComparison.OrdinalIgnoreCase))
@@ -123,10 +152,24 @@ namespace dataproduct.api.Repositories
                         (pl.ID_PhuLieu.HasValue && mappedPhuLieuIds.Contains(pl.ID_PhuLieu.Value)) ||
                         pl.ID_HeaderKey == idHeaderKey
                     ))
-                .Select(pl => new { pl.IsManual, pl.KLPhuGia, pl.KLPhuGia_Manual })
+                .Select(pl => new { pl.ID_MeThoi, pl.IsManual, pl.KLPhuGia, pl.KLPhuGia_Manual })
                 .ToListAsync();
 
-            return (decimal)plRows.Sum(x => x.IsManual == true ? (x.KLPhuGia_Manual ?? 0) : (x.KLPhuGia ?? 0));
+            // Gom theo mẻ trước khi cộng — mirror sp_GetHRC2GroupedByMaterial (HasManual/ManualValue):
+            // nếu 1 mẻ có dòng Manual, dùng giá trị Manual đó thay cho CẢ mẻ, không cộng thêm các dòng
+            // Auto khác cùng mẻ (tránh cộng trùng khi 1 mẻ có nhiều dòng PhuLieu cùng map vào HeaderKey này).
+            decimal total = 0;
+            foreach (var group in plRows.GroupBy(x => x.ID_MeThoi))
+            {
+                var manualValues = group
+                    .Where(x => x.IsManual == true && x.KLPhuGia_Manual.HasValue)
+                    .Select(x => x.KLPhuGia_Manual!.Value);
+
+                total += manualValues.Any()
+                    ? (decimal)manualValues.Max()
+                    : (decimal)group.Sum(x => x.KLPhuGia ?? 0);
+            }
+            return total;
         }
 
         /// <summary>
@@ -165,10 +208,21 @@ namespace dataproduct.api.Repositories
                 .ToListAsync();
 
             decimal bof = 0, lf = 0, rh = 0;
-            foreach (var pl in plRows)
+            // Gom theo mẻ trước khi cộng — mirror sp_GetHRC2GroupedByMaterial (HasManual/ManualValue):
+            // nếu 1 mẻ có dòng Manual, dùng giá trị Manual đó thay cho CẢ mẻ, không cộng thêm các dòng
+            // Auto khác cùng mẻ (tránh cộng trùng khi 1 mẻ có nhiều dòng PhuLieu cùng map vào HeaderKey này).
+            foreach (var group in plRows.GroupBy(x => x.ID_MeThoi))
             {
-                if (!bieuMauByMeId.TryGetValue(pl.ID_MeThoi, out var bieuMau) || bieuMau == null) continue;
-                var value = (decimal)(pl.IsManual == true ? (pl.KLPhuGia_Manual ?? 0) : (pl.KLPhuGia ?? 0));
+                if (!bieuMauByMeId.TryGetValue(group.Key, out var bieuMau) || bieuMau == null) continue;
+
+                var manualValues = group
+                    .Where(x => x.IsManual == true && x.KLPhuGia_Manual.HasValue)
+                    .Select(x => x.KLPhuGia_Manual!.Value);
+
+                var value = manualValues.Any()
+                    ? (decimal)manualValues.Max()
+                    : (decimal)group.Sum(x => x.KLPhuGia ?? 0);
+
                 if (bieuMau.StartsWith("BOF", StringComparison.OrdinalIgnoreCase)) bof += value;
                 else if (bieuMau.StartsWith("LF", StringComparison.OrdinalIgnoreCase)) lf += value;
                 else if (bieuMau.StartsWith("RH", StringComparison.OrdinalIgnoreCase)) rh += value;
