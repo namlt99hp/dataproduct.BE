@@ -53,7 +53,7 @@ namespace dataproduct.api.Controllers
                 var ok = await _service.UpdateTinhTrangAsync(request.PhieuId, request.NguoiDuyetId, request.TinhTrang);
                 return ok ? NoContent() : NotFound();
             }
-            catch (InvalidOperationException ex)
+            catch (Exception ex)
             {
                 return BadRequest(new { message = ex.Message });
             }

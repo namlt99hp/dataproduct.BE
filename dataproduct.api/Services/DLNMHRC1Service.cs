@@ -2314,8 +2314,8 @@ namespace dataproduct.api.Services
 
             ClearRowsFrom(ws, 4);
             string isoText = bieuMau == "LF"
-                ? "BM.14/QT.05.10\nNgày hiệu lực: 01/09/2023\nLần sửa đổi: 00"
-                : "BM.07/QT.05.10\nNgày hiệu lực: 01/07/2024\nLần sửa đổi: 02";
+                ? "BM.14/QT.05.10\nNgày hiệu lực: 25/09/2026\nLần sửa đổi: 01"
+                : "BM.07/QT.05.10\nNgày hiệu lực: 25/09/2026\nLần sửa đổi: 03";
             UpdateHeaderRowMerges(ws, lastCol, isoText);
             RenderInfoRows(ws, rows, lastCol, scope, ngayPhieu, caPhieu, kip, bieuMau);
 
@@ -2761,8 +2761,8 @@ namespace dataproduct.api.Services
             // Mã ISO riêng theo biểu mẫu — mirror isoInfo.code trong BM_config/HRC1_BB_TieuHao_BOF.json
             // (BM.08/QT.05.15) và HRC1_BB_TieuHao_LF.json (BM.14/QT.05.15).
             string bmCode = isLF
-                ? "BM.14/QT.05.10 <br /> Ngày hiệu lực: 01/09/2023 <br /> Lần sửa đổi: 00"
-                : "BM.07/QT.05.10 <br /> Ngày hiệu lực: 01/07/2024 <br /> Lần sửa đổi: 02";
+                ? "BM.14/QT.05.10 <br /> Ngày hiệu lực: 25/09/2026 <br /> Lần sửa đổi: 01"
+                : "BM.07/QT.05.10 <br /> Ngày hiệu lực: 25/09/2026 <br /> Lần sửa đổi: 03";
 
             string thead = PdfThead(headers, bieuMau);
             string tbody = PdfTbody(headers, rows, bieuMau);
