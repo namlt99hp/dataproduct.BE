@@ -1,6 +1,5 @@
 using dataproduct.api.Models;
 using dataproduct.api.Services;
-using System.Text.Json;
 
 namespace dataproduct.api.Services.Initializers
 {
@@ -25,11 +24,7 @@ namespace dataproduct.api.Services.Initializers
 
         public async Task<List<string>> InitializeAsync(BmPhieu phieu)
         {
-            if (string.IsNullOrWhiteSpace(phieu.DataJson))
-                return new List<string>();
-
-            using var doc = JsonDocument.Parse(phieu.DataJson);
-            await _dlnmHrc2Service.SaveHRC2ManualFromPhieuFormAsync(doc.RootElement);
+            await _dlnmHrc2Service.SaveHRC2ManualFromPhieuFormAsync(phieu);
             return new List<string>();
         }
     }

@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace dataproduct.api.Services
 {
@@ -63,10 +64,40 @@ namespace dataproduct.api.Services
         // =========================================================
         // HRC2: Lưu phụ liệu manual + manual_col từ formData phiếu
         // =========================================================
-        public async Task SaveHRC2ManualFromPhieuFormAsync(JsonElement formData)
+        /// <summary>Nhận cả BmPhieu (không chỉ formData) vì sau khi upsert DLNM_HRC2, cần ghi ngược
+        /// ID vừa tạo vào DataJson cho các dòng nhập tay mới (xem comment SaveHRC2ManualDataAsync) —
+        /// nếu không, dòng đó mất ID vĩnh viễn trong JSON đã lưu và lần save/clone sau sẽ bị tạo
+        /// trùng record DLNM_HRC2 thay vì update lại record cũ.</summary>
+        public async Task SaveHRC2ManualFromPhieuFormAsync(BmPhieu phieu)
         {
-            var (models, manualColHeaderKeyIds) = await BuildModelToInsert(formData);
-            await SaveHRC2ManualDataAsync(models, manualColHeaderKeyIds);
+            if (phieu == null || string.IsNullOrWhiteSpace(phieu.DataJson))
+                return;
+
+            using var doc = JsonDocument.Parse(phieu.DataJson);
+            var (models, manualColHeaderKeyIds) = await BuildModelToInsert(doc.RootElement);
+            var idMap = await SaveHRC2ManualDataAsync(models, manualColHeaderKeyIds);
+
+            var toPatch = models
+                .Where(m => m.Id == null && m.SourceRowIndex.HasValue && idMap.ContainsKey(m.RowKey))
+                .ToList();
+            if (toPatch.Count == 0)
+                return;
+
+            var root = JsonNode.Parse(phieu.DataJson)?.AsObject();
+            if (root == null
+                || !root.TryGetPropertyValue("table1", out var table1Node)
+                || table1Node is not JsonArray table1Array)
+                return;
+
+            foreach (var model in toPatch)
+            {
+                var idx = model.SourceRowIndex!.Value;
+                if (idx < 0 || idx >= table1Array.Count) continue;
+                if (table1Array[idx] is JsonObject rowObj)
+                    rowObj["id"] = JsonValue.Create(idMap[model.RowKey]);
+            }
+
+            phieu.DataJson = root.ToJsonString();
         }
 
         private double? TryGetDouble(JsonElement row, string key)
@@ -158,8 +189,9 @@ namespace dataproduct.api.Services
                     .ToDictionaryAsync(k => k.Id, k => k.TenHienThi)
                 : new Dictionary<int, string>();
 
-            foreach (var row in table1)
+            for (int rowIndex = 0; rowIndex < table1.Count; rowIndex++)
             {
+                var row = table1[rowIndex];
                 bool isNMRow = !row.TryGetProperty("IsNM", out var flag)
                                || flag.ValueKind != JsonValueKind.False;
 
@@ -239,6 +271,7 @@ namespace dataproduct.api.Services
                             : null,
                         IsNM = false,
                         IsChuyenCa = false,
+                        SourceRowIndex = rowIndex,
                         hRC2_PhuLieus = phuLieus
                     };
                     result.Add(model);
@@ -455,9 +488,13 @@ namespace dataproduct.api.Services
             return null;
         }
 
-        public async Task SaveHRC2ManualDataAsync(List<HRC2InsertModel> models, HashSet<int> manualColHeaderKeyIds)
+        /// <summary>Upsert DLNM_HRC2/PhuLieu_HRC2 từ các dòng đã parse. Trả về map RowKey → ID thật
+        /// (sau SaveChanges) để caller ghi ngược ID vào DataJson của phiếu cho các dòng nhập tay mới
+        /// tạo (xem SaveHRC2ManualFromPhieuFormAsync) — nếu không, lần save/clone sau sẽ không biết
+        /// dòng đó đã có record, dẫn tới tạo trùng.</summary>
+        public async Task<Dictionary<Guid, long>> SaveHRC2ManualDataAsync(List<HRC2InsertModel> models, HashSet<int> manualColHeaderKeyIds)
         {
-            if (models == null || !models.Any()) return;
+            if (models == null || !models.Any()) return new Dictionary<Guid, long>();
 
             var dlnmMap = new Dictionary<Guid, DLNM_HRC2>();
 
@@ -824,6 +861,8 @@ namespace dataproduct.api.Services
                 _context.PhuLieu_HRC2s.RemoveRange(toDelete);
                 await _context.SaveChangesAsync();
             }
+
+            return dlnmMap.ToDictionary(kv => kv.Key, kv => kv.Value.ID);
         }
 
         public async Task<bool> DeleteRowNMAsync(int id)
@@ -929,7 +968,11 @@ namespace dataproduct.api.Services
 
             // --- SAU: load toàn bộ base records rồi batch trong 4 query ---
             var allData = await _repo.GetAllAsync(request.NgaySX, request.Ca, request.LoaiBM, request.Scope);
-            var validRecords = allData.Where(x => x.ID != 0).ToList();
+            // Loại mẻ IsSyncSauGui=1 (NM trả về SAU khi slot đã có phiếu gửi duyệt) khỏi bảng điền/hiệu
+            // chỉnh phiếu — mirror IsSyncSauGui != true ở SearchThongKeApiAsync/GetThongKeSumAsync.
+            // Nếu không, mẻ này sẽ tự trộn vào table1 khi mở phiếu Hiệu chỉnh mà người dùng không để ý,
+            // dễ gây tính trùng (vừa có mẻ nhập tay, vừa có mẻ NM cho cùng 1 mẻ thật) khi gửi duyệt.
+            var validRecords = allData.Where(x => x.ID != 0 && x.IsSyncSauGui != true).ToList();
             return await _repo.GetAllGroupedBatchAsync(validRecords);
         }
 

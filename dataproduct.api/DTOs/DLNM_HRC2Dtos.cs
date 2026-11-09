@@ -78,6 +78,10 @@ namespace dataproduct.api.DTOs
         public bool IsChuyenCa { get; set; }
         [NotMapped]
         public Guid RowKey { get; set; } = Guid.NewGuid();
+        /// <summary>Chỉ số của dòng này trong mảng table1 gốc (formData) — dùng để ghi ngược ID vừa
+        /// tạo vào đúng dòng trong DataJson sau khi lưu (xem SaveHRC2ManualFromPhieuFormAsync).</summary>
+        [NotMapped]
+        public int? SourceRowIndex { get; set; }
 
         public List<HRC2_PhuLieuInSertModel> hRC2_PhuLieus { get; set; } = new List<HRC2_PhuLieuInSertModel>();
     }
