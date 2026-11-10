@@ -1,5 +1,6 @@
 using dataproduct.api.DTOs;
 using dataproduct.api.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
 
@@ -507,6 +508,7 @@ namespace dataproduct.api.Controllers
         // -------------------------------------------------------
 
         /// <summary>GET /api/hrc1/duc/get-me-by-daterange?fromDate=&amp;toDate= — mẻ BBGN thép lỏng lọc theo khoảng ThoiGian thực tế (giao ca)</summary>
+        [AllowAnonymous]
         [HttpGet("duc/get-me-by-daterange")]
         public async Task<IActionResult> GetMeTheoThoiGian([FromQuery] HRC1_MeTheoThoiGianQuery query)
         {

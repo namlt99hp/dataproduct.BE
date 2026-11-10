@@ -97,7 +97,7 @@ namespace dataproduct.api.Repositories
             if (declaredKhuVuc.Count == 0) return (null, null, null);
 
             var dlnmRows = await _context.DLNM_HRC2s
-                .Where(x => x.Ngay == ngaySX && x.Ca == ca && x.IsDelete != true)
+                .Where(x => x.Ngay == ngaySX && x.Ca == ca && x.IsDelete != true && x.IsSyncSauGui != true)
                 .Select(x => new { x.ID, x.BieuMau, x.Scope })
                 .ToListAsync();
 
@@ -190,7 +190,7 @@ namespace dataproduct.api.Repositories
             if (declaredKhuVuc.Count == 0) return 0;
 
             var dlnmIds = (await _context.DLNM_HRC2s
-                .Where(x => x.Ngay == ngaySX && x.Ca == ca && x.IsDelete != true)
+                .Where(x => x.Ngay == ngaySX && x.Ca == ca && x.IsDelete != true && x.IsSyncSauGui != true)
                 .Select(x => new { x.ID, x.BieuMau, x.Scope })
                 .ToListAsync())
                 .Where(x => declaredKhuVuc.Contains((x.BieuMau, x.Scope ?? 0)))
@@ -248,7 +248,7 @@ namespace dataproduct.api.Repositories
             if (declaredKhuVuc.Count == 0) return (0, 0, 0);
 
             var dlnmRows = await _context.DLNM_HRC2s
-                .Where(x => x.Ngay == ngaySX && x.Ca == ca && x.IsDelete != true)
+                .Where(x => x.Ngay == ngaySX && x.Ca == ca && x.IsDelete != true && x.IsSyncSauGui != true)
                 .Select(x => new { x.ID, x.BieuMau, x.Scope })
                 .ToListAsync();
 
