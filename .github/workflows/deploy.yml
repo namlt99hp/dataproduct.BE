@@ -73,7 +73,7 @@ jobs:
       # build/publish/zip. Bỏ qua lỗi nếu runner không có quyền đổi giờ hệ
       # thống (vd. self-hosted chạy bằng service account hạn chế).
       - name: Set timezone to Vietnam
-        shell: pwsh
+        shell: powershell
         run: |
           try {
             Set-TimeZone -Id "SE Asia Standard Time" -ErrorAction Stop
@@ -93,7 +93,7 @@ jobs:
       # 4. CHECK SOURCE VERSION
       # ------------------------------------------------
       - name: Check source information
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host "Source branch: demo"
           Write-Host "Commit: $(git rev-parse HEAD)"
@@ -119,7 +119,7 @@ jobs:
       # 7. PUBLISH APPLICATION
       # ------------------------------------------------
       - name: Publish Application
-        shell: pwsh
+        shell: powershell
         run: |
           $publish = Join-Path $env:RUNNER_TEMP "publish"
 
@@ -149,7 +149,7 @@ jobs:
       # 8. CREATE DEPLOYMENT PACKAGE
       # ------------------------------------------------
       - name: Create Deployment ZIP
-        shell: pwsh
+        shell: powershell
         run: |
           $publish = Join-Path $env:RUNNER_TEMP "publish"
           $stage = Join-Path $env:RUNNER_TEMP "package"
@@ -238,7 +238,7 @@ jobs:
 
       - name: Deploy via API
         if: inputs.deploy_mode == 'deploy_api'
-        shell: pwsh
+        shell: powershell
 
         env:
           DEPLOY_API_URL: ${{ secrets.DEPLOY_API_URL }}
