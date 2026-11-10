@@ -48,7 +48,10 @@ jobs:
 
     name: Build & Deploy .NET Application
 
-    runs-on: windows-latest
+    # Chạy trên self-hosted runner đặt trong mạng/VPN công ty — bắt buộc để
+    # gọi được DEPLOY_API_URL nội bộ mà không bị WAF cổng biên reset kết nối
+    # khi upload file .exe/.dll (xem ghi chú lúc debug deploy lỗi curl 35).
+    runs-on: self-hosted
 
     steps:
 
@@ -64,12 +67,19 @@ jobs:
       # ------------------------------------------------
       # 2. SET TIMEZONE VỀ VIỆT NAM (UTC+7)
       # ------------------------------------------------
-      # Runner windows-latest chạy giờ hệ thống UTC. ZIP (DOS date/time) không
-      # lưu timezone nên khi giải nén trên server VN, giờ file bị lùi 7 giờ
-      # nếu không đổi giờ hệ thống trước khi build/publish/zip.
+      # Phòng trường hợp máy chạy runner chưa đặt giờ Việt Nam (vd. giờ hệ
+      # thống đang UTC): ZIP (DOS date/time) không lưu timezone nên khi giải
+      # nén trên server VN, giờ file sẽ bị lùi 7 giờ nếu không đổi trước khi
+      # build/publish/zip. Bỏ qua lỗi nếu runner không có quyền đổi giờ hệ
+      # thống (vd. self-hosted chạy bằng service account hạn chế).
       - name: Set timezone to Vietnam
         shell: pwsh
-        run: Set-TimeZone -Id "SE Asia Standard Time"
+        run: |
+          try {
+            Set-TimeZone -Id "SE Asia Standard Time" -ErrorAction Stop
+          } catch {
+            Write-Warning "Không đổi được timezone: $_"
+          }
 
       # ------------------------------------------------
       # 3. SETUP .NET SDK
