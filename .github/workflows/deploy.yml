@@ -1,0 +1,282 @@
+
+name: .NET Build & Deploy
+
+# =====================================================
+# TRIGGER: CHỈ CHẠY THỦ CÔNG
+# =====================================================
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_mode:
+        description: 'Chọn phương thức triển khai'
+        required: true
+        type: choice
+        options:
+          - package_only
+          - deploy_api
+        default: package_only
+
+# =====================================================
+# PERMISSIONS
+# =====================================================
+permissions:
+  contents: read
+
+# =====================================================
+# GLOBAL CONFIGURATION
+# =====================================================
+env:
+  DOTNET_VERSION: '8.0.x'
+  CONFIGURATION: 'Release'
+
+  # Branch cố định lấy source
+  SOURCE_BRANCH: 'demo'
+
+  # Điều chỉnh theo cấu trúc Repository
+  SOLUTION_PATH: 'dataproduct.api.sln'
+  PROJECT_PATH: 'dataproduct.api/dataproduct.api.csproj'
+
+  # Tên file ZIP
+  PACKAGE_NAME: 'dataproduct.api.zip'
+
+jobs:
+
+  # ===================================================
+  # BUILD - TEST - PUBLISH - PACKAGE - DEPLOY
+  # ===================================================
+  build_deploy:
+
+    name: Build & Deploy .NET Application
+
+    runs-on: windows-latest
+
+    steps:
+
+      # ------------------------------------------------
+      # 1. CHECKOUT SOURCE CODE TỪ BRANCH DEMO
+      # ------------------------------------------------
+      - name: Checkout source from demo
+        uses: actions/checkout@v4
+        with:
+          ref: demo
+          fetch-depth: 1
+
+      # ------------------------------------------------
+      # 2. SETUP .NET SDK
+      # ------------------------------------------------
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      # ------------------------------------------------
+      # 3. CHECK SOURCE VERSION
+      # ------------------------------------------------
+      - name: Check source information
+        shell: pwsh
+        run: |
+          Write-Host "Source branch: demo"
+          Write-Host "Commit: $(git rev-parse HEAD)"
+          Write-Host "Commit message: $(git log -1 --pretty=%s)"
+          Write-Host "Repository: ${{ github.repository }}"
+
+      # ------------------------------------------------
+      # 4. RESTORE NUGET PACKAGES
+      # ------------------------------------------------
+      - name: Restore NuGet
+        run: dotnet restore "${{ env.SOLUTION_PATH }}"
+
+      # ------------------------------------------------
+      # 5. BUILD SOLUTION
+      # ------------------------------------------------
+      - name: Build Solution
+        run: >
+          dotnet build "${{ env.SOLUTION_PATH }}"
+          --configuration ${{ env.CONFIGURATION }}
+          --no-restore
+
+      # ------------------------------------------------
+      # 6. PUBLISH APPLICATION
+      # ------------------------------------------------
+      - name: Publish Application
+        shell: pwsh
+        run: |
+          $publish = Join-Path $env:RUNNER_TEMP "publish"
+
+          Remove-Item $publish -Recurse -Force -ErrorAction SilentlyContinue
+
+          dotnet publish "${{ env.PROJECT_PATH }}" `
+            --configuration ${{ env.CONFIGURATION }} `
+            --no-build `
+            --no-restore `
+            --output $publish
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Dotnet publish failed!"
+          }
+
+          if (-not (Test-Path $publish)) {
+            throw "Publish directory not found!"
+          }
+
+          if (-not (Get-ChildItem $publish -Recurse -File)) {
+            throw "Publish directory is empty!"
+          }
+
+          Write-Host "Publish completed: $publish"
+
+      # ------------------------------------------------
+      # 7. CREATE DEPLOYMENT PACKAGE
+      # ------------------------------------------------
+      - name: Create Deployment ZIP
+        shell: pwsh
+        run: |
+          $publish = Join-Path $env:RUNNER_TEMP "publish"
+          $stage = Join-Path $env:RUNNER_TEMP "package"
+          $zip = Join-Path $env:RUNNER_TEMP "${{ env.PACKAGE_NAME }}"
+
+          # Danh sách chính xác 3 file cần đóng gói
+          $requiredFiles = @(
+            "dataproduct.api.dll",
+            "dataproduct.api.exe",
+            "dataproduct.api.pdb"
+          )
+
+          # Xóa dữ liệu cũ nếu tồn tại
+          Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item $zip -Force -ErrorAction SilentlyContinue
+
+          # Tạo thư mục trung gian
+          New-Item -ItemType Directory -Path $stage -Force | Out-Null
+
+          # Kiểm tra và copy đúng 3 file
+          foreach ($fileName in $requiredFiles) {
+            $source = Join-Path $publish $fileName
+            $destination = Join-Path $stage $fileName
+
+            if (-not (Test-Path $source -PathType Leaf)) {
+              throw "Không tìm thấy file bắt buộc: $source"
+            }
+
+            Copy-Item -Path $source -Destination $destination -Force
+            Write-Host "Đã thêm: $fileName"
+          }
+
+          # Kiểm tra số lượng file trong thư mục trung gian
+          $stagedFiles = @(Get-ChildItem $stage -File)
+
+          if ($stagedFiles.Count -ne 3) {
+            throw "Thư mục package phải có đúng 3 file. Hiện tại: $($stagedFiles.Count)"
+          }
+
+          # Nén ZIP
+          Compress-Archive `
+            -Path "$stage\*" `
+            -DestinationPath $zip `
+            -CompressionLevel Optimal `
+            -Force
+
+          if (-not (Test-Path $zip -PathType Leaf)) {
+            throw "Không tạo được file ZIP!"
+          }
+
+          # Kiểm tra nội dung thực tế bên trong ZIP
+          $zipEntries = @(tar.exe -tf $zip)
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Không thể kiểm tra nội dung file ZIP!"
+          }
+
+          if ($zipEntries.Count -ne 3) {
+            throw "ZIP phải chứa đúng 3 file. Thực tế: $($zipEntries.Count)"
+          }
+
+          Write-Host "=================================="
+          Write-Host "PACKAGE CREATED SUCCESSFULLY"
+          Write-Host "ZIP: $zip"
+          Write-Host "Files in ZIP:"
+          $zipEntries | ForEach-Object { Write-Host " - $_" }
+          Write-Host "Size: $([math]::Round((Get-Item $zip).Length / 1MB, 2)) MB"
+          Write-Host "=================================="
+
+      # ===================================================
+      # OPTION 1: PACKAGE ONLY
+      # ===================================================
+
+      - name: Upload ZIP Artifact
+        if: inputs.deploy_mode == 'package_only'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dataproduct.api-demo-${{ github.run_number }}
+          path: ${{ runner.temp }}\${{ env.PACKAGE_NAME }}
+          if-no-files-found: error
+          retention-days: 14
+
+      # ===================================================
+      # OPTION 2: DEPLOY VIA API
+      # ===================================================
+
+      - name: Deploy via API
+        if: inputs.deploy_mode == 'deploy_api'
+        shell: pwsh
+
+        env:
+          DEPLOY_API_URL: ${{ secrets.DEPLOY_API_URL }}
+          DEPLOY_API_USERNAME: ${{ secrets.DEPLOY_API_USERNAME }}
+          DEPLOY_API_PASSWORD: ${{ secrets.DEPLOY_API_PASSWORD }}
+
+        run: |
+
+          $zip = Join-Path $env:RUNNER_TEMP "${{ env.PACKAGE_NAME }}"
+
+          # 1. Check configuration
+          if ([string]::IsNullOrWhiteSpace($env:DEPLOY_API_URL)) {
+            throw "DEPLOY_API_URL is not configured!"
+          }
+
+          if ([string]::IsNullOrWhiteSpace($env:DEPLOY_API_USERNAME)) {
+            throw "DEPLOY_API_USERNAME is not configured!"
+          }
+
+          if ([string]::IsNullOrWhiteSpace($env:DEPLOY_API_PASSWORD)) {
+            throw "DEPLOY_API_PASSWORD is not configured!"
+          }
+
+          if (-not (Test-Path $zip)) {
+            throw "ZIP package not found!"
+          }
+
+          Write-Host "Starting deployment..."
+          Write-Host "Application: ${{ env.APP_NAME }}"
+          Write-Host "lisCode: API.Dataproduct.v2"
+          Write-Host "Package: $zip"
+
+          # 2. Call API with Basic Authentication
+          # Form-data:
+          # lisCode = API.Dataproduct.v2 (Text)
+          # File    = MyApplication.zip (File)
+
+          $response = curl.exe `
+            --fail-with-body `
+            --silent `
+            --show-error `
+            --request POST `
+            --user "$($env:DEPLOY_API_USERNAME):$($env:DEPLOY_API_PASSWORD)" `
+            --form-string "lisCode=API.Dataproduct.v2" `
+            --form "File=@$zip;type=application/zip" `
+            "$env:DEPLOY_API_URL"
+
+          $curlExitCode = $LASTEXITCODE
+
+          # 3. Check HTTP request
+          if ($curlExitCode -ne 0) {
+            throw "Deploy API request failed. Curl exit code: $curlExitCode"
+          }
+
+          # 4. Display API response
+          Write-Host "================================="
+          Write-Host "API RESPONSE:"
+          Write-Host $response
+          Write-Host "================================="
+
+          Write-Host "Deploy API request completed successfully."
