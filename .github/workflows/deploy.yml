@@ -65,24 +65,7 @@ jobs:
           fetch-depth: 1
 
       # ------------------------------------------------
-      # 2. SET TIMEZONE VỀ VIỆT NAM (UTC+7)
-      # ------------------------------------------------
-      # Phòng trường hợp máy chạy runner chưa đặt giờ Việt Nam (vd. giờ hệ
-      # thống đang UTC): ZIP (DOS date/time) không lưu timezone nên khi giải
-      # nén trên server VN, giờ file sẽ bị lùi 7 giờ nếu không đổi trước khi
-      # build/publish/zip. Bỏ qua lỗi nếu runner không có quyền đổi giờ hệ
-      # thống (vd. self-hosted chạy bằng service account hạn chế).
-      - name: Set timezone to Vietnam
-        shell: powershell
-        run: |
-          try {
-            Set-TimeZone -Id "SE Asia Standard Time" -ErrorAction Stop
-          } catch {
-            Write-Warning "Không đổi được timezone: $_"
-          }
-
-      # ------------------------------------------------
-      # 3. SETUP .NET SDK
+      # 2. SETUP .NET SDK
       # ------------------------------------------------
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
@@ -90,7 +73,7 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       # ------------------------------------------------
-      # 4. CHECK SOURCE VERSION
+      # 3. CHECK SOURCE VERSION
       # ------------------------------------------------
       - name: Check source information
         shell: powershell
@@ -101,22 +84,24 @@ jobs:
           Write-Host "Repository: ${{ github.repository }}"
 
       # ------------------------------------------------
-      # 5. RESTORE NUGET PACKAGES
+      # 4. RESTORE NUGET PACKAGES
       # ------------------------------------------------
       - name: Restore NuGet
+        shell: powershell
         run: dotnet restore "${{ env.SOLUTION_PATH }}"
 
       # ------------------------------------------------
-      # 6. BUILD SOLUTION
+      # 5. BUILD SOLUTION
       # ------------------------------------------------
       - name: Build Solution
+        shell: powershell
         run: >
           dotnet build "${{ env.SOLUTION_PATH }}"
           --configuration ${{ env.CONFIGURATION }}
           --no-restore
 
       # ------------------------------------------------
-      # 7. PUBLISH APPLICATION
+      # 6. PUBLISH APPLICATION
       # ------------------------------------------------
       - name: Publish Application
         shell: powershell
@@ -146,7 +131,7 @@ jobs:
           Write-Host "Publish completed: $publish"
 
       # ------------------------------------------------
-      # 8. CREATE DEPLOYMENT PACKAGE
+      # 7. CREATE DEPLOYMENT PACKAGE
       # ------------------------------------------------
       - name: Create Deployment ZIP
         shell: powershell
