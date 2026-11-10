@@ -21,6 +21,10 @@ namespace dataproduct.api.Models
         public string? SoHieuLo { get; set; }
         public decimal? KhoiLuongKeHoach { get; set; }
         public decimal? KhoiLuongAmThucTe { get; set; }
+        // Snapshot tổng khối lượng lúc "Gán" cân tự động (LC_CanTuDongRepository.GanAsync) —
+        // NULL = chưa từng Gán. Dùng để khoá chọn lại (đã gán rồi) và highlight FE khi
+        // KhoiLuongAmThucTe hiện tại khác giá trị này (bị sửa tay sau Gán).
+        public decimal? KhoiLuongAmThucTeCanTuDong { get; set; }
         public decimal? DoAm { get; set; }
         public decimal? KhoiLuongKhoThucTe { get; set; }
         public decimal? LuyKeQuyKho { get; set; }

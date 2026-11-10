@@ -182,6 +182,8 @@ public partial class ProductFormContext : DbContext
     public virtual DbSet<LC_TP_ViTriDapCoc> LC_TP_ViTriDapCoc { get; set; }
     public virtual DbSet<LC_TP_DapCoc> LC_TP_DapCoc { get; set; }
     public virtual DbSet<LC_TP_CocChuyenNhaSang> LC_TP_CocChuyenNhaSang { get; set; }
+    public virtual DbSet<LC_CanTuDongRawLog> LC_CanTuDongRawLog { get; set; }
+    public virtual DbSet<LC_CanTuDongGanChiTiet> LC_CanTuDongGanChiTiet { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -1033,6 +1035,7 @@ public partial class ProductFormContext : DbContext
             entity.Property(e => e.KhoiLuongKhoThucTe).HasColumnType("decimal(18, 3)");
             entity.Property(e => e.LuyKeQuyKho).HasColumnType("decimal(18, 3)");
             entity.Property(e => e.TonDauKyQuyKho).HasColumnType("decimal(18, 3)");
+            entity.Property(e => e.KhoiLuongAmThucTeCanTuDong).HasColumnType("decimal(18, 3)");
         });
         modelBuilder.Entity<LC_CapLieuTonSilo>(entity =>
         {

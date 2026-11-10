@@ -81,6 +81,7 @@ namespace dataproduct.api.Repositories.NM.LC
                         SoHieuLo = cl.SoHieuLo,
                         KhoiLuongKeHoach = cl.KhoiLuongKeHoach,
                         KhoiLuongAmThucTe = cl.KhoiLuongAmThucTe,
+                        KhoiLuongAmThucTeCanTuDong = cl.KhoiLuongAmThucTeCanTuDong,
                         DoAm = cl.DoAm,
                         KhoiLuongKhoThucTe = cl.KhoiLuongKhoThucTe,
                         LuyKeQuyKho = cl.LuyKeQuyKho,

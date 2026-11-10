@@ -16,6 +16,9 @@ namespace dataproduct.api.DTOs.NM.LC
         public string? SoHieuLo { get; set; }
         public decimal? KhoiLuongKeHoach { get; set; }
         public decimal? KhoiLuongAmThucTe { get; set; }
+        // Snapshot lúc "Gán" cân tự động (xem LC_CanTuDongController) — NULL = chưa từng Gán.
+        // FE dùng để khoá chọn lại dòng này + highlight khi KhoiLuongAmThucTe khác giá trị này.
+        public decimal? KhoiLuongAmThucTeCanTuDong { get; set; }
         public decimal? DoAm { get; set; }
         // CALCULATED (F01) — backend tính khi lưu, giá trị client gửi lên bị bỏ qua.
         public decimal? KhoiLuongKhoThucTe { get; set; }
