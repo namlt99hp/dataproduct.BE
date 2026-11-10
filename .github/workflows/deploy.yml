@@ -62,7 +62,17 @@ jobs:
           fetch-depth: 1
 
       # ------------------------------------------------
-      # 2. SETUP .NET SDK
+      # 2. SET TIMEZONE VỀ VIỆT NAM (UTC+7)
+      # ------------------------------------------------
+      # Runner windows-latest chạy giờ hệ thống UTC. ZIP (DOS date/time) không
+      # lưu timezone nên khi giải nén trên server VN, giờ file bị lùi 7 giờ
+      # nếu không đổi giờ hệ thống trước khi build/publish/zip.
+      - name: Set timezone to Vietnam
+        shell: pwsh
+        run: Set-TimeZone -Id "SE Asia Standard Time"
+
+      # ------------------------------------------------
+      # 3. SETUP .NET SDK
       # ------------------------------------------------
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
@@ -70,7 +80,7 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       # ------------------------------------------------
-      # 3. CHECK SOURCE VERSION
+      # 4. CHECK SOURCE VERSION
       # ------------------------------------------------
       - name: Check source information
         shell: pwsh
@@ -81,13 +91,13 @@ jobs:
           Write-Host "Repository: ${{ github.repository }}"
 
       # ------------------------------------------------
-      # 4. RESTORE NUGET PACKAGES
+      # 5. RESTORE NUGET PACKAGES
       # ------------------------------------------------
       - name: Restore NuGet
         run: dotnet restore "${{ env.SOLUTION_PATH }}"
 
       # ------------------------------------------------
-      # 5. BUILD SOLUTION
+      # 6. BUILD SOLUTION
       # ------------------------------------------------
       - name: Build Solution
         run: >
@@ -96,7 +106,7 @@ jobs:
           --no-restore
 
       # ------------------------------------------------
-      # 6. PUBLISH APPLICATION
+      # 7. PUBLISH APPLICATION
       # ------------------------------------------------
       - name: Publish Application
         shell: pwsh
@@ -126,7 +136,7 @@ jobs:
           Write-Host "Publish completed: $publish"
 
       # ------------------------------------------------
-      # 7. CREATE DEPLOYMENT PACKAGE
+      # 8. CREATE DEPLOYMENT PACKAGE
       # ------------------------------------------------
       - name: Create Deployment ZIP
         shell: pwsh
@@ -247,22 +257,22 @@ jobs:
           }
 
           Write-Host "Starting deployment..."
-          Write-Host "Application: ${{ env.APP_NAME }}"
-          Write-Host "lisCode: API.Dataproduct.v2"
+          Write-Host "IisCode: API.Dataproduct.v2"
           Write-Host "Package: $zip"
 
           # 2. Call API with Basic Authentication
           # Form-data:
-          # lisCode = API.Dataproduct.v2 (Text)
+          # IisCode = API.Dataproduct.v2 (Text)
           # File    = MyApplication.zip (File)
 
           $response = curl.exe `
             --fail-with-body `
             --silent `
             --show-error `
+            --ssl-no-revoke `
             --request POST `
             --user "$($env:DEPLOY_API_USERNAME):$($env:DEPLOY_API_PASSWORD)" `
-            --form-string "lisCode=API.Dataproduct.v2" `
+            --form-string "IisCode=API.Dataproduct.v2" `
             --form "File=@$zip;type=application/zip" `
             "$env:DEPLOY_API_URL"
 
