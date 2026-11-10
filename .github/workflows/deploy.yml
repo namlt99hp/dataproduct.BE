@@ -79,8 +79,7 @@ jobs:
         shell: powershell
         run: |
           Write-Host "Source branch: demo"
-          Write-Host "Commit: $(git rev-parse HEAD)"
-          Write-Host "Commit message: $(git log -1 --pretty=%s)"
+          Write-Host "Commit: ${{ github.sha }}"
           Write-Host "Repository: ${{ github.repository }}"
 
       # ------------------------------------------------
