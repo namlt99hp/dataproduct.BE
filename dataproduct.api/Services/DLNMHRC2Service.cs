@@ -945,10 +945,11 @@ namespace dataproduct.api.Services
             if (request == null)
                 throw new ArgumentNullException(nameof(request));
 
-            // Debounce: chỉ sync nếu chưa sync trong vòng SyncCooldown (2 phút) cho cùng key.
-            // Gọi /api/DLNMHRC2/force-sync để ép sync ngay lập tức.
-            if (ShouldSync(request))
-                await _hrc2NMSyncService.SyncHRC2FromNMAsync(request);
+            // KLGangLongCCT/KLThepPheGang: chỉ 2 lệnh gọi stored proc batch nhẹ trên DB GangLong, không
+            // có bước sync mẻ "nặng" nào khác đi kèm ở luồng này (SyncFromNmStoredProcAsync phía dưới
+            // đang comment, không chạy) — nên không throttle, luôn làm mới mỗi lần gọi filter.
+            await _hrc2NMSyncService.EnsureGangLongMetricsAsync(request);
+            await _hrc2NMSyncService.EnsureThepPheGangAsync(request);
 
             // --- TRƯỚC: sync mỗi request, N+1 query (comment lại để revert nếu cần) ---
             // await _hrc2NMSyncService.SyncHRC2FromNMAsync(request);

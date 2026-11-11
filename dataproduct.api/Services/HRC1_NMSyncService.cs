@@ -27,8 +27,20 @@ namespace dataproduct.api.Services
         /// Gọi SP_HRC1_BOF_Sync_Full để đồng bộ mẻ thổi + phụ liệu từ NM cho đúng 1 tổ hợp Ngày+Ca+Lò,
         /// sau đó bổ sung KLGangLongCCT/KLThepPheGang từ DB GangLong (chỉ áp dụng BOF).
         /// Khác HRC2 (sync toàn bộ rồi lọc), SP này đã nhận tham số nên chỉ sync đúng phạm vi cần.
+        /// Gồm 2 bước con (SyncHRC1MeThoiOnlyAsync + RefreshGangMetricsForSlotAsync) — tách riêng để
+        /// DLNMHRC1Service.FilterGroupedAsync có thể gọi 2 bước này với 2 cooldown độc lập.
         /// </summary>
         public async Task SyncHRC1FromNMAsync(SyncFromNM_HRC1_Request request)
+        {
+            await SyncHRC1MeThoiOnlyAsync(request);
+            await RefreshGangMetricsForSlotAsync(request);
+        }
+
+        /// <summary>
+        /// Chỉ chạy SP_HRC1_BOF_Sync_Full (đồng bộ mẻ thổi + phụ liệu từ NM) — KHÔNG kèm
+        /// KLGangLongCCT/KLThepPheGang, để FilterGroupedAsync có thể throttle riêng phần này.
+        /// </summary>
+        public async Task SyncHRC1MeThoiOnlyAsync(SyncFromNM_HRC1_Request request)
         {
             if (request == null)
                 throw new ArgumentNullException(nameof(request));
@@ -36,6 +48,17 @@ namespace dataproduct.api.Services
             await _context.Database.ExecuteSqlRawAsync(
                 "EXEC dbo.SP_HRC1_BOF_Sync_Full @NgaySanXuat={0}, @Ca={1}, @LoThoi={2}",
                 DateOnly.FromDateTime(request.NgaySX), request.Ca, request.Scope);
+        }
+
+        /// <summary>
+        /// Chỉ bổ sung KLGangLongCCT + KLThepPheGang cho đúng slot (không chạy lại SP_HRC1_BOF_Sync_Full)
+        /// — cho phép FilterGroupedAsync làm mới 2 cột này theo cooldown riêng, độc lập với cooldown của
+        /// luồng sync mẻ thổi chính.
+        /// </summary>
+        public async Task RefreshGangMetricsForSlotAsync(SyncFromNM_HRC1_Request request)
+        {
+            if (request == null)
+                throw new ArgumentNullException(nameof(request));
 
             await EnsureGangLongMetricsAsync(request);
             await EnsureThepPheGangAsync(request);
@@ -195,6 +218,34 @@ namespace dataproduct.api.Services
 
             await _context.SaveChangesAsync();
             return updated;
+        }
+
+        /// <summary>
+        /// Bổ sung KLThepLong cho mọi mẻ LF trong đúng slot Ngày/Ca/Lò — tải rows rồi gọi
+        /// RefreshThepLongForRowsAsync. Dùng cho DLNMHRC1Service.FilterGroupedAsync (nút "Làm mới dữ
+        /// liệu" bên trang Tiêu hao LF) với cooldown riêng, độc lập cooldown Mác thép
+        /// (ShouldSyncLfMacThep) của cùng request — 2 nguồn dữ liệu khác nhau (Linked Server vs
+        /// HRC1_MeThep) nên không nên gộp chung 1 cooldown.
+        /// </summary>
+        public async Task EnsureThepLongMetricsAsync(DateOnly ngay, int ca, int scope)
+        {
+            var rows = await _context.Hrc1TieuHaos
+                .Where(x =>
+                    !x.IsDeleted &&
+                    x.NgaySanXuat == ngay &&
+                    x.Ca == (byte)ca &&
+                    x.Scope == scope &&
+                    x.BieuMau == "LF" &&
+                    x.MeThoi != null)
+                // Loại dòng thuộc phiếu đã khóa (clone "Đề nghị hiệu chỉnh" đang mở), mirror
+                // EnsureGangLongMetricsAsync/RefreshGangMetricsByPhieuIdsAsync.
+                .Where(x => x.IDPhieu == null ||
+                    _context.BmPhieus.Any(p => p.Idphieu == x.IDPhieu && p.IsLock != 1 && p.IsDelete != 1))
+                .ToListAsync();
+
+            if (rows.Count == 0) return;
+
+            await RefreshThepLongForRowsAsync(rows);
         }
 
         /// <summary>

@@ -117,8 +117,17 @@ namespace dataproduct.api.Services
             // Chỉ BOF có nguồn NM (linked-server view) để đồng bộ. Các BieuMau khác (vd "LF", nhập tay
             // hoàn toàn) không có gì để sync — gọi sync cho chúng sẽ khiến SP_HRC1_BOF_Sync_Full throw
             // (LoThoi=5 không được hỗ trợ) hoặc vô tình đồng bộ đè dữ liệu BOF nếu Scope trùng 1-4.
-            if (ShouldSync(request) && string.Equals(request.BieuMau, "BOF", StringComparison.OrdinalIgnoreCase))
-                await _syncService.SyncHRC1FromNMAsync(request);
+            // SP_HRC1_BOF_Sync_Full (nặng, đọc view Linked Server) vẫn throttle qua ShouldSync.
+            // KLGangLongCCT/KLThepPheGang (chỉ 2 lệnh gọi stored proc batch nhẹ trên DB GangLong) thì
+            // LUÔN làm mới mỗi lần gọi filter, không throttle — để "Làm mới dữ liệu" phản ánh ngay giá
+            // trị mới nhất bên Gang lỏng, không phải đợi qua cooldown của sync mẻ chính.
+            if (string.Equals(request.BieuMau, "BOF", StringComparison.OrdinalIgnoreCase))
+            {
+                if (ShouldSync(request))
+                    await _syncService.SyncHRC1MeThoiOnlyAsync(request);
+
+                await _syncService.RefreshGangMetricsForSlotAsync(request);
+            }
 
             var ngay = DateOnly.FromDateTime(request.NgaySX);
 
@@ -127,9 +136,16 @@ namespace dataproduct.api.Services
             // Field đó tự cập nhật khi có thao tác bên BBGN (nhận mẻ/nhập liệu), nhưng nếu Mác thép được
             // đồng bộ mới từ Linked Server (nút "Làm mới" bên BBGN) SAU khi mẻ đã liên kết, LF không tự biết —
             // nên khi "Làm mới dữ liệu" bên LF cũng phải tự đồng bộ lại đúng như BBGN đang làm.
-            if (string.Equals(request.BieuMau, "LF", StringComparison.OrdinalIgnoreCase)
-                && ShouldSyncLfMacThep(ngay, request.Ca, request.Scope))
-                await SyncLfMacThepFromMeThepAsync(ngay, request.Ca, request.Scope);
+            // Sync Mác thép (gọi lại Linked Server qua SyncPhanLoaiService, nặng hơn) vẫn throttle qua
+            // ShouldSyncLfMacThep. KLThepLong (chỉ đọc HRC1_MeThep, nhẹ) thì luôn làm mới mỗi lần gọi
+            // filter, không throttle — cùng lý do với KLGangLongCCT/KLThepPheGang ở nhánh BOF trên.
+            if (string.Equals(request.BieuMau, "LF", StringComparison.OrdinalIgnoreCase))
+            {
+                if (ShouldSyncLfMacThep(ngay, request.Ca, request.Scope))
+                    await SyncLfMacThepFromMeThepAsync(ngay, request.Ca, request.Scope);
+
+                await _syncService.EnsureThepLongMetricsAsync(ngay, request.Ca, request.Scope);
+            }
 
             var allData = await _repo.GetAllAsync(ngay, request.Ca, request.Scope, request.BieuMau ?? "BOF");
             return await _repo.GetAllGroupedBatchAsync(allData);
@@ -368,7 +384,13 @@ namespace dataproduct.api.Services
                 // này trước đây khiến mọi chỉnh sửa MacThep/KLThepPhe trên dòng NM bị âm thầm rớt mất.
                 var macThep = row.TryGetProperty("macThep", out var mtNM) && mtNM.ValueKind == JsonValueKind.String
                     ? mtNM.GetString() : null;
+                // Chốt tại đây làm 1 điểm lưu duy nhất: luôn làm tròn 2 chữ số thập phân trước khi lưu
+                // xuống HRC1_TieuHao.KLThepPhe (áp dụng cho cả dòng NM lẫn dòng thêm tay dùng lại biến
+                // này ở nhánh else dưới) — tránh làm tròn chỉ ở FE khiến giá trị hiển thị (đã tròn) bị
+                // commit lại khác với giá trị gốc NM, bị hiểu lầm là "đã chỉnh sửa tay" (IsEdited/
+                // KLThepPheIsManual) và highlight tràn lan dù user không thực sự sửa gì.
                 var klThepPhe = TryGetDecimal(row, "klThepPhe");
+                if (klThepPhe.HasValue) klThepPhe = Math.Round(klThepPhe.Value, 2);
 
                 if (isNMRow)
                 {
@@ -410,7 +432,7 @@ namespace dataproduct.api.Services
                         MeThoi = meThoi ?? "",
                         MacThep = row.TryGetProperty("macThep", out var mt) ? mt.GetString() : null,
                         KLGang = TryGetDecimal(row, "klGang"),
-                        KLThepPhe = TryGetDecimal(row, "klThepPhe"),
+                        KLThepPhe = klThepPhe,
                         O2 = o2,
                         N2 = n2,
                         AR = ar,

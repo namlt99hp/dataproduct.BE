@@ -128,7 +128,11 @@ namespace dataproduct.api.Services
         //     }
         // }
         
-        private async Task EnsureGangLongMetricsAsync(SyncFromNM_HRC2_Request request)
+        /// <summary>
+        /// Public để DLNMHRC2Service.FilterGroupedAsync gọi với cooldown riêng (ShouldSyncGangLong),
+        /// tách khỏi cooldown của EnsureThepPheGangAsync — 2 cột khác nhau, không nên gộp chung 1 throttle.
+        /// </summary>
+        public async Task EnsureGangLongMetricsAsync(SyncFromNM_HRC2_Request request)
         {
             if (!string.Equals(request.LoaiBM, "BOF", StringComparison.OrdinalIgnoreCase))
                 return;
@@ -211,7 +215,11 @@ namespace dataproduct.api.Services
                     $"Error executing {procedureName}: {ex.Message}", ex);
             }
         }
-        private async Task EnsureThepPheGangAsync(SyncFromNM_HRC2_Request request)
+        /// <summary>
+        /// Public để DLNMHRC2Service.FilterGroupedAsync gọi với cooldown riêng (ShouldSyncThepPhe),
+        /// tách khỏi cooldown của EnsureGangLongMetricsAsync — xem comment ở đó.
+        /// </summary>
+        public async Task EnsureThepPheGangAsync(SyncFromNM_HRC2_Request request)
         {
             if (!string.Equals(request.LoaiBM, "BOF", StringComparison.OrdinalIgnoreCase))
                 return;
