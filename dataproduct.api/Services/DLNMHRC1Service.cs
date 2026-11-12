@@ -1831,6 +1831,7 @@ namespace dataproduct.api.Services
                     GhiChu = src.GhiChu,
                     KLGang = src.KLGang,
                     KLGangLongCCT = src.KLGangLongCCT,
+                    KLGangLongTong = src.KLGangLongTong,
                     KLThepPhe = src.KLThepPhe,
                     KLThepPheOrig = src.KLThepPheOrig,
                     KLThepPheIsManual = src.KLThepPheIsManual,
@@ -1980,6 +1981,7 @@ namespace dataproduct.api.Services
                 canonical.NguoiXoa = copy.NguoiXoa;
                 canonical.KLGang = copy.KLGang;
                 canonical.KLGangLongCCT = copy.KLGangLongCCT;
+                canonical.KLGangLongTong = copy.KLGangLongTong;
                 canonical.KLThepPhe = copy.KLThepPhe;
                 canonical.KLThepPheOrig = copy.KLThepPheOrig;
                 canonical.KLThepPheIsManual = copy.KLThepPheIsManual;

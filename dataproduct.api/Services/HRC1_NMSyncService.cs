@@ -65,9 +65,10 @@ namespace dataproduct.api.Services
         }
 
         /// <summary>
-        /// Bổ sung KLGangLongCCT (usp_Sum_KL_GangLong_By_MeThoi_CCT) cho mọi mẻ trong đúng slot
-        /// Ngày+Ca+Lò+BieuMau — mirror HRC2_NMSyncService.EnsureGangLongMetricsAsync. Luôn ghi đè để
-        /// phản ánh thay đổi từ phía gang. Chỉ áp dụng BOF (LF chưa có nguồn NM nào để bổ sung metric này).
+        /// Bổ sung KLGangLongCCT + KLGangLongTong (usp_Sum_KL_GangLong_By_MeThoi, 1 SP trả về cả
+        /// 2 cột cùng lúc) cho mọi mẻ trong đúng slot Ngày+Ca+Lò+BieuMau — mirror
+        /// HRC2_NMSyncService.EnsureGangLongMetricsAsync. Luôn ghi đè để phản ánh thay đổi từ phía
+        /// gang. Chỉ áp dụng BOF (LF chưa có nguồn NM nào để bổ sung metric này).
         /// KHÔNG lọc IsNM: SP chỉ tra cứu theo MeThoi (không phụ thuộc dòng đến từ NM hay thêm tay) —
         /// lọc IsNM==true trước đây khiến mẻ thêm tay (IsNM=false) không bao giờ có KLGangLongCCT dù
         /// MeThoi của nó vẫn tồn tại và tra được ở DB GangLong.
@@ -97,14 +98,15 @@ namespace dataproduct.api.Services
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            var cache = await ExecuteGangLongStoredProcBatchAsync("usp_Sum_KL_GangLong_By_MeThoi_CCT", allMeThoi);
+            var cache = await ExecuteGangLongTongStoredProcBatchAsync(allMeThoi);
 
             foreach (var row in rows)
             {
                 if (string.IsNullOrWhiteSpace(row.MeThoi)) continue;
                 if (!cache.TryGetValue(row.MeThoi, out var kl)) continue;
 
-                row.KLGangLongCCT = (decimal?)kl;
+                row.KLGangLongCCT = (decimal?)kl.KLGangLongCCT;
+                row.KLGangLongTong = (decimal?)kl.KLGangLongTong;
             }
 
             await _context.SaveChangesAsync();
@@ -155,9 +157,10 @@ namespace dataproduct.api.Services
         }
 
         /// <summary>
-        /// Làm mới KLGangLongCCT và KLThepPheGang cho danh sách rows đã tải sẵn — mirror
-        /// HRC2_NMSyncService.RefreshGangMetricsForRowsAsync. Dùng 2 TVP stored proc batch → 1
-        /// SaveChanges, không phụ thuộc filter slot (vd cho 1 tính năng "Làm mới lại chỉ số" sau này).
+        /// Làm mới KLGangLongCCT + KLGangLongTong và KLThepPheGang cho danh sách rows đã tải sẵn —
+        /// mirror HRC2_NMSyncService.RefreshGangMetricsForRowsAsync. Dùng 2 TVP stored proc batch
+        /// (1 cho cả cặp KLGangLongCCT/KLGangLongTong, 1 cho KLThepPheGang) → 1 SaveChanges, không phụ
+        /// thuộc filter slot (vd cho 1 tính năng "Làm mới lại chỉ số" sau này).
         /// </summary>
         public async Task<int> RefreshGangMetricsForRowsAsync(List<Hrc1TieuHao> rows)
         {
@@ -169,8 +172,7 @@ namespace dataproduct.api.Services
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            var gangLongCache = await ExecuteGangLongStoredProcBatchAsync(
-                "usp_Sum_KL_GangLong_By_MeThoi_CCT", allMeThoi);
+            var gangLongCache = await ExecuteGangLongTongStoredProcBatchAsync(allMeThoi);
 
             var thepPheCache = await ExecuteGangLongStoredProcBatchAsync(
                 "usp_Get_KLThepPhe_By_MeThoi", allMeThoi, "KLThepPhe");
@@ -178,7 +180,10 @@ namespace dataproduct.api.Services
             foreach (var row in validRows)
             {
                 if (gangLongCache.TryGetValue(row.MeThoi!, out var kl))
-                    row.KLGangLongCCT = (decimal?)kl;
+                {
+                    row.KLGangLongCCT = (decimal?)kl.KLGangLongCCT;
+                    row.KLGangLongTong = (decimal?)kl.KLGangLongTong;
+                }
                 if (thepPheCache.TryGetValue(row.MeThoi!, out var thepPhe))
                     row.KLThepPheGang = (decimal?)thepPhe;
             }
@@ -294,6 +299,55 @@ namespace dataproduct.api.Services
             {
                 throw new InvalidOperationException(
                     $"Error executing {procedureName}: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Gọi usp_Sum_KL_GangLong_By_MeThoi (TVP dbo.TVP_MeThoi @ListMeThoi) trên DB GangLong — 1 SP
+        /// trả về cùng lúc 2 cột KLGangLongCCT/KLGangLongTong theo MeThoi (KLGangLongCCT lấy từ
+        /// Tbl_BM_16_ThungTrungGian.KLGang_Thoi, KLGangLongTong lấy từ Tbl_BM_16_GangLong), thay cho
+        /// việc gọi 2 SP riêng từng cột.
+        /// </summary>
+        private async Task<Dictionary<string, (double? KLGangLongCCT, double? KLGangLongTong)>> ExecuteGangLongTongStoredProcBatchAsync(
+            IEnumerable<string> listMeThoi)
+        {
+            var result = new Dictionary<string, (double? KLGangLongCCT, double? KLGangLongTong)>(StringComparer.OrdinalIgnoreCase);
+
+            var tvp = new DataTable();
+            tvp.Columns.Add("MaMeThoi", typeof(string));
+            foreach (var mt in listMeThoi)
+                tvp.Rows.Add(mt);
+
+            await using var connection = new SqlConnection(_gangLongConnStr);
+            await connection.OpenAsync();
+
+            try
+            {
+                using var command = new SqlCommand("usp_Sum_KL_GangLong_By_MeThoi", connection);
+                command.CommandType = CommandType.StoredProcedure;
+                command.CommandTimeout = 30;
+
+                var param = command.Parameters.AddWithValue("@ListMeThoi", tvp);
+                param.SqlDbType = SqlDbType.Structured;
+                param.TypeName = "dbo.TVP_MeThoi";
+
+                await using var reader = await command.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    var meThoi = reader["MaMeThoi"]?.ToString();
+                    if (string.IsNullOrWhiteSpace(meThoi)) continue;
+
+                    var cct = reader["KLGangLongCCT"] == DBNull.Value ? (double?)null : Convert.ToDouble(reader["KLGangLongCCT"]);
+                    var tong = reader["KLGangLongTong"] == DBNull.Value ? (double?)null : Convert.ToDouble(reader["KLGangLongTong"]);
+                    result[meThoi] = (cct, tong);
+                }
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException(
+                    $"Error executing usp_Sum_KL_GangLong_By_MeThoi: {ex.Message}", ex);
             }
         }
     }

@@ -310,6 +310,7 @@ namespace dataproduct.api.Repositories
             IsTrungMeThoi = b.IsTrungMeThoi,
             KLGang = b.KLGang,
             KLGangLongCCT = b.KLGangLongCCT,
+            KLGangLongTong = b.KLGangLongTong,
             KLThepPhe = b.KLThepPhe,
             KLThepPheOrig = b.KLThepPheOrig,
             KLThepPheIsManual = b.KLThepPheIsManual,

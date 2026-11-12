@@ -576,6 +576,7 @@ public partial class ProductFormContext : DbContext
             entity.Property(e => e.ThoiDiemKetThuc).HasColumnName("ThoiDiemKetThuc");
             entity.Property(e => e.KLGang).HasColumnName("KLGang").HasPrecision(18, 3);
             entity.Property(e => e.KLGangLongCCT).HasColumnName("KLGangLongCCT").HasPrecision(18, 3);
+            entity.Property(e => e.KLGangLongTong).HasColumnName("KLGangLongTong").HasPrecision(18, 3);
             entity.Property(e => e.KLThepPhe).HasColumnName("KLThepPhe").HasPrecision(18, 3);
             entity.Property(e => e.KLThepPheOrig).HasColumnName("KLThepPheOrig").HasPrecision(18, 3);
             entity.Property(e => e.KLThepPheIsManual).HasColumnName("KLThepPheIsManual");

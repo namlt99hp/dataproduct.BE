@@ -18,6 +18,7 @@ namespace dataproduct.api.ResponseModels
         public bool? IsTrungMeThoi { get; set; }
         public decimal? KLGang { get; set; }
         public decimal? KLGangLongCCT { get; set; }
+        public decimal? KLGangLongTong { get; set; }
         public decimal? KLThepPhe { get; set; }
         public decimal? KLThepPheOrig { get; set; }
         public bool KLThepPheIsManual { get; set; }

@@ -34,6 +34,7 @@ public partial class Hrc1TieuHao
     public DateTime? ThoiDiemKetThuc { get; set; }
     public decimal? KLGang { get; set; }
     public decimal? KLGangLongCCT { get; set; }
+    public decimal? KLGangLongTong { get; set; }
     public decimal? KLThepPhe { get; set; }
     // Snapshot giá trị NM gốc của KLThepPhe tại thời điểm sửa tay lần đầu — xem MacThepOrig.
     public decimal? KLThepPheOrig { get; set; }
