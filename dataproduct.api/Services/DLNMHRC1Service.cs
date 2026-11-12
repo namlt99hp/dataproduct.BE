@@ -2364,17 +2364,19 @@ namespace dataproduct.api.Services
 
         // -------------------------------------------------------
         // Column position helpers.
-        // BOF: STT|MeThoi|MacThep|KLGangLong|KLThepPhe (5 cột cố định) rồi phụ liệu, sau phụ liệu:
-        // Oxy|Nito|Argon|QueLayMau|QueDoNhiet|Ghi chú (6 cột).
-        // LF: STT|MeThoi|MacThep|KLThepLong (4 cột cố định) rồi phụ liệu, sau phụ liệu:
+        // BOF (layout ISO rev.03 — xem HRC1_BB_TieuHao_BOF.json): STT|MeThoi|MacThep|KLGangLong|
+        // KLThepPhe (5 cột cố định) rồi Oxy|Nito (2 cột, ĐỨNG TRƯỚC phụ liệu) rồi phụ liệu, sau phụ
+        // liệu chỉ còn Ghi chú (1 cột) — đã bỏ Argon/Que lấy mẫu/Que đo nhiệt khỏi BOF.
+        // LF (không đổi): STT|MeThoi|MacThep|KLThepLong (4 cột cố định) rồi phụ liệu, sau phụ liệu:
         // Argon|QueLayMau|QueDoNhiet|Ghi chú (4 cột, LF không có Oxy/Nito).
         // -------------------------------------------------------
         private static int FixedColsCount(string bieuMau) => bieuMau == "LF" ? 4 : 5;
-        private static int TailColsCount(string bieuMau) => bieuMau == "LF" ? 4 : 6;
-        private static int PhuLieuStartCol(string bieuMau) => FixedColsCount(bieuMau) + 1;
+        private static int PreDynamicExtraCols(string bieuMau) => bieuMau == "LF" ? 0 : 2;
+        private static int TailColsCount(string bieuMau) => bieuMau == "LF" ? 4 : 1;
+        private static int PhuLieuStartCol(string bieuMau) => FixedColsCount(bieuMau) + PreDynamicExtraCols(bieuMau) + 1;
 
         private static int ComputeLastCol(int dynamicCount, string bieuMau) =>
-            FixedColsCount(bieuMau) + dynamicCount + TailColsCount(bieuMau);
+            FixedColsCount(bieuMau) + PreDynamicExtraCols(bieuMau) + dynamicCount + TailColsCount(bieuMau);
 
         private static void ClearRowsFrom(IXLWorksheet ws, int startRow)
         {
@@ -2453,7 +2455,7 @@ namespace dataproduct.api.Services
             int s = PhuLieuStartCol(bieuMau);
 
             MergeVertCell(ws, 1, "STT");
-            MergeVertCell(ws, 2, isLF ? "Mẻ nấu" : "Mẻ thổi");
+            MergeVertCell(ws, 2, "Mẻ nấu");
             MergeVertCell(ws, 3, "Mác thép");
             if (isLF)
             {
@@ -2463,6 +2465,9 @@ namespace dataproduct.api.Services
             {
                 MergeVertCell(ws, 4, "KL gang lỏng\n(tấn)");
                 MergeVertCell(ws, 5, "KL thép phế\n(tấn)");
+                MergeHorizCell(ws, HeaderParentRow, 6, 7, "Nhiên liệu (m3)");
+                HeaderCell(ws, HeaderChildRow, 6, "Oxy (m3)");
+                HeaderCell(ws, HeaderChildRow, 7, "Nitơ (m3)");
             }
 
             if (headers.Count > 0)
@@ -2478,20 +2483,12 @@ namespace dataproduct.api.Services
             {
                 MergeVertCell(ws, a, "Argon\n(m3)");
                 a += 1;
-            }
-            else
-            {
-                MergeHorizCell(ws, HeaderParentRow, a, a + 2, "Khí (nhập tay)");
-                HeaderCell(ws, HeaderChildRow, a, "Oxy");
-                HeaderCell(ws, HeaderChildRow, a + 1, "Nito");
-                HeaderCell(ws, HeaderChildRow, a + 2, "Argon");
-                a += 3;
-            }
 
-            MergeHorizCell(ws, HeaderParentRow, a, a + 1, "Que");
-            HeaderCell(ws, HeaderChildRow, a, "Que lấy mẫu");
-            HeaderCell(ws, HeaderChildRow, a + 1, "Que đo nhiệt");
-            a += 2;
+                MergeHorizCell(ws, HeaderParentRow, a, a + 1, "Que");
+                HeaderCell(ws, HeaderChildRow, a, "Que lấy mẫu");
+                HeaderCell(ws, HeaderChildRow, a + 1, "Que đo nhiệt");
+                a += 2;
+            }
 
             MergeVertCell(ws, a, "Ghi chú");
         }
@@ -2519,6 +2516,8 @@ namespace dataproduct.api.Services
                 {
                     ws.Cell(r, 4).Value = Num((double?)d.KLGang);
                     ws.Cell(r, 5).Value = Num((double?)((d.KLThepPhe ?? 0) + (d.KLThepPheGang ?? 0)));
+                    ws.Cell(r, 6).Value = Num(d.O2);
+                    ws.Cell(r, 7).Value = Num(d.N2);
                 }
 
                 for (int i = 0; i < headers.Count; i++)
@@ -2528,15 +2527,9 @@ namespace dataproduct.api.Services
                 if (isLF)
                 {
                     ws.Cell(r, a++).Value = Num(d.AR);
+                    ws.Cell(r, a++).Value = d.QueLayMau.HasValue ? (XLCellValue)d.QueLayMau.Value : Blank.Value;
+                    ws.Cell(r, a++).Value = d.QueDoNhiet.HasValue ? (XLCellValue)d.QueDoNhiet.Value : Blank.Value;
                 }
-                else
-                {
-                    ws.Cell(r, a++).Value = Num(d.O2);
-                    ws.Cell(r, a++).Value = Num(d.N2);
-                    ws.Cell(r, a++).Value = Num(d.AR);
-                }
-                ws.Cell(r, a++).Value = d.QueLayMau.HasValue ? (XLCellValue)d.QueLayMau.Value : Blank.Value;
-                ws.Cell(r, a++).Value = d.QueDoNhiet.HasValue ? (XLCellValue)d.QueDoNhiet.Value : Blank.Value;
                 ws.Cell(r, a).Value = d.GhiChu ?? "";
 
                 r++;
@@ -2561,6 +2554,8 @@ namespace dataproduct.api.Services
             {
                 ws.Cell(r, 4).Value = (XLCellValue)rows.Sum(x => (double?)x.Data?.KLGang ?? 0);
                 ws.Cell(r, 5).Value = (XLCellValue)rows.Sum(x => (double?)((x.Data?.KLThepPhe ?? 0) + (x.Data?.KLThepPheGang ?? 0)) ?? 0);
+                ws.Cell(r, 6).Value = (XLCellValue)rows.Sum(x => x.Data?.O2 ?? 0);
+                ws.Cell(r, 7).Value = (XLCellValue)rows.Sum(x => x.Data?.N2 ?? 0);
             }
 
             for (int i = 0; i < headers.Count; i++)
@@ -2573,15 +2568,9 @@ namespace dataproduct.api.Services
             if (isLF)
             {
                 ws.Cell(r, a++).Value = (XLCellValue)rows.Sum(x => x.Data?.AR ?? 0);
+                ws.Cell(r, a++).Value = (XLCellValue)rows.Sum(x => x.Data?.QueLayMau ?? 0);
+                ws.Cell(r, a).Value = (XLCellValue)rows.Sum(x => x.Data?.QueDoNhiet ?? 0);
             }
-            else
-            {
-                ws.Cell(r, a++).Value = (XLCellValue)rows.Sum(x => x.Data?.O2 ?? 0);
-                ws.Cell(r, a++).Value = (XLCellValue)rows.Sum(x => x.Data?.N2 ?? 0);
-                ws.Cell(r, a++).Value = (XLCellValue)rows.Sum(x => x.Data?.AR ?? 0);
-            }
-            ws.Cell(r, a++).Value = (XLCellValue)rows.Sum(x => x.Data?.QueLayMau ?? 0);
-            ws.Cell(r, a).Value = (XLCellValue)rows.Sum(x => x.Data?.QueDoNhiet ?? 0);
             // Ghi chú — bỏ qua
         }
 
@@ -2811,7 +2800,7 @@ namespace dataproduct.api.Services
             var r2 = new StringBuilder();
 
             r1.Append("<th rowspan=\"2\">STT</th>");
-            r1.Append($"<th rowspan=\"2\">{(isLF ? "Mẻ nấu" : "Mẻ thổi")}</th>");
+            r1.Append("<th rowspan=\"2\">Mẻ nấu</th>");
             r1.Append("<th rowspan=\"2\">Mác thép</th>");
             if (isLF)
             {
@@ -2821,6 +2810,8 @@ namespace dataproduct.api.Services
             {
                 r1.Append("<th rowspan=\"2\">KL gang lỏng<br/>(tấn)</th>");
                 r1.Append("<th rowspan=\"2\">KL thép phế<br/>(tấn)</th>");
+                r1.Append("<th colspan=\"2\">Nhiên liệu (m3)</th>");
+                r2.Append("<th>Oxy (m3)</th><th>Nitơ (m3)</th>");
             }
 
             if (h.Count > 0)
@@ -2832,15 +2823,9 @@ namespace dataproduct.api.Services
             if (isLF)
             {
                 r1.Append("<th rowspan=\"2\">Argon<br/>(m3)</th>");
+                r1.Append("<th colspan=\"2\">Que</th>");
+                r2.Append("<th>Que lấy mẫu</th><th>Que đo nhiệt</th>");
             }
-            else
-            {
-                r1.Append("<th colspan=\"3\">Khí (nhập tay)</th>");
-                r2.Append("<th>Oxy</th><th>Nito</th><th>Argon</th>");
-            }
-
-            r1.Append("<th colspan=\"2\">Que</th>");
-            r2.Append("<th>Que lấy mẫu</th><th>Que đo nhiệt</th>");
 
             r1.Append("<th rowspan=\"2\">Ghi chú</th>");
 
@@ -2865,19 +2850,16 @@ namespace dataproduct.api.Services
                 else
                 {
                     sb.Append($"<td>{PFmt((double?)d.KLGang)}</td><td>{PFmt((double?)((d.KLThepPhe ?? 0) + (d.KLThepPheGang ?? 0)))}</td>");
+                    sb.Append($"<td>{PFmt(d.O2)}</td><td>{PFmt(d.N2)}</td>");
                 }
                 foreach (var hx in headers)
                     sb.Append($"<td>{PFmt(vm.TryGetValue(hx.PhuLieuID, out var kl) ? kl : null)}</td>");
                 if (isLF)
                 {
                     sb.Append($"<td>{PFmt(d.AR)}</td>");
+                    sb.Append($"<td>{(d.QueLayMau.HasValue ? d.QueLayMau.Value.ToString() : "")}</td>");
+                    sb.Append($"<td>{(d.QueDoNhiet.HasValue ? d.QueDoNhiet.Value.ToString() : "")}</td>");
                 }
-                else
-                {
-                    sb.Append($"<td>{PFmt(d.O2)}</td><td>{PFmt(d.N2)}</td><td>{PFmt(d.AR)}</td>");
-                }
-                sb.Append($"<td>{(d.QueLayMau.HasValue ? d.QueLayMau.Value.ToString() : "")}</td>");
-                sb.Append($"<td>{(d.QueDoNhiet.HasValue ? d.QueDoNhiet.Value.ToString() : "")}</td>");
                 sb.Append($"<td class=\"td-left\">{d.GhiChu ?? ""}</td>");
                 sb.Append("</tr>");
             }
@@ -2890,6 +2872,8 @@ namespace dataproduct.api.Services
             {
                 sb.Append($"<td>{PFmt(rows.Sum(x => (double?)x.Data?.KLGang ?? 0))}</td>");
                 sb.Append($"<td>{PFmt(rows.Sum(x => (double?)((x.Data?.KLThepPhe ?? 0) + (x.Data?.KLThepPheGang ?? 0)) ?? 0))}</td>");
+                sb.Append($"<td>{PFmt(rows.Sum(x => x.Data?.O2 ?? 0))}</td>");
+                sb.Append($"<td>{PFmt(rows.Sum(x => x.Data?.N2 ?? 0))}</td>");
             }
             foreach (var hx in headers)
             {
@@ -2899,15 +2883,9 @@ namespace dataproduct.api.Services
             if (isLF)
             {
                 sb.Append($"<td>{PFmt(rows.Sum(x => x.Data?.AR ?? 0))}</td>");
+                sb.Append($"<td>{rows.Sum(x => x.Data?.QueLayMau ?? 0)}</td>");
+                sb.Append($"<td>{rows.Sum(x => x.Data?.QueDoNhiet ?? 0)}</td>");
             }
-            else
-            {
-                sb.Append($"<td>{PFmt(rows.Sum(x => x.Data?.O2 ?? 0))}</td>");
-                sb.Append($"<td>{PFmt(rows.Sum(x => x.Data?.N2 ?? 0))}</td>");
-                sb.Append($"<td>{PFmt(rows.Sum(x => x.Data?.AR ?? 0))}</td>");
-            }
-            sb.Append($"<td>{rows.Sum(x => x.Data?.QueLayMau ?? 0)}</td>");
-            sb.Append($"<td>{rows.Sum(x => x.Data?.QueDoNhiet ?? 0)}</td>");
             sb.Append("<td></td>");
             sb.Append("</tr></tbody>");
             return sb.ToString();

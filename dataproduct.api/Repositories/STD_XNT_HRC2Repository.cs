@@ -146,13 +146,20 @@ namespace dataproduct.api.Repositories
 
                 if (doThatRows.Count > 0)
                 {
-                    var manualValues = doThatRows
-                        .Where(x => x.IsManual == true && x.KLPhuGia_Manual.HasValue)
-                        .Select(x => x.KLPhuGia_Manual!.Value);
+                    // Mirror SP: IsManual=true đã là "chốt theo Manual", dù KLPhuGia_Manual đang NULL
+                    // (user xóa input) — dùng 0 cho mẻ đó, KHÔNG fallback về KLPhuGia tự động.
+                    if (doThatRows.Any(x => x.IsManual == true))
+                    {
+                        var manualValues = doThatRows
+                            .Where(x => x.IsManual == true && x.KLPhuGia_Manual.HasValue)
+                            .Select(x => x.KLPhuGia_Manual!.Value);
 
-                    value += manualValues.Any()
-                        ? (decimal)manualValues.Max()
-                        : (decimal)doThatRows.Sum(x => x.KLPhuGia ?? 0);
+                        value += manualValues.Any() ? (decimal)manualValues.Max() : 0;
+                    }
+                    else
+                    {
+                        value += (decimal)doThatRows.Sum(x => x.KLPhuGia ?? 0);
+                    }
                     hasValue = true;
                 }
 
@@ -223,13 +230,20 @@ namespace dataproduct.api.Repositories
             decimal total = 0;
             foreach (var group in plRows.GroupBy(x => x.ID_MeThoi))
             {
-                var manualValues = group
-                    .Where(x => x.IsManual == true && x.KLPhuGia_Manual.HasValue)
-                    .Select(x => x.KLPhuGia_Manual!.Value);
+                // Mirror SP: IsManual=true đã là "chốt theo Manual", dù KLPhuGia_Manual đang NULL
+                // (user xóa input) — dùng 0 cho mẻ đó, KHÔNG fallback về KLPhuGia tự động.
+                if (group.Any(x => x.IsManual == true))
+                {
+                    var manualValues = group
+                        .Where(x => x.IsManual == true && x.KLPhuGia_Manual.HasValue)
+                        .Select(x => x.KLPhuGia_Manual!.Value);
 
-                total += manualValues.Any()
-                    ? (decimal)manualValues.Max()
-                    : (decimal)group.Sum(x => x.KLPhuGia ?? 0);
+                    total += manualValues.Any() ? (decimal)manualValues.Max() : 0;
+                }
+                else
+                {
+                    total += (decimal)group.Sum(x => x.KLPhuGia ?? 0);
+                }
             }
             return total;
         }
@@ -287,13 +301,21 @@ namespace dataproduct.api.Repositories
             {
                 if (!bieuMauByMeId.TryGetValue(group.Key, out var bieuMau) || bieuMau == null) continue;
 
-                var manualValues = group
-                    .Where(x => x.IsManual == true && x.KLPhuGia_Manual.HasValue)
-                    .Select(x => x.KLPhuGia_Manual!.Value);
+                // Mirror SP: IsManual=true đã là "chốt theo Manual", dù KLPhuGia_Manual đang NULL
+                // (user xóa input) — dùng 0 cho mẻ đó, KHÔNG fallback về KLPhuGia tự động.
+                decimal value;
+                if (group.Any(x => x.IsManual == true))
+                {
+                    var manualValues = group
+                        .Where(x => x.IsManual == true && x.KLPhuGia_Manual.HasValue)
+                        .Select(x => x.KLPhuGia_Manual!.Value);
 
-                var value = manualValues.Any()
-                    ? (decimal)manualValues.Max()
-                    : (decimal)group.Sum(x => x.KLPhuGia ?? 0);
+                    value = manualValues.Any() ? (decimal)manualValues.Max() : 0;
+                }
+                else
+                {
+                    value = (decimal)group.Sum(x => x.KLPhuGia ?? 0);
+                }
 
                 if (bieuMau.StartsWith("BOF", StringComparison.OrdinalIgnoreCase)) bof += value;
                 else if (bieuMau.StartsWith("LF", StringComparison.OrdinalIgnoreCase)) lf += value;
