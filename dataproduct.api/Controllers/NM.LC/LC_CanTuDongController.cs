@@ -31,6 +31,23 @@ namespace dataproduct.api.Controllers.NM.LC
             }
         }
 
+        [HttpPost("by-phieu/{idPhieu:guid}/sync")]
+        public async Task<IActionResult> SyncByPhieu(Guid idPhieu)
+        {
+            try
+            {
+                return Ok(await _service.SyncRawLogByPhieuAsync(idPhieu));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = "Đồng bộ dữ liệu cân tự động thất bại: " + ex.Message });
+            }
+        }
+
         [HttpPost("by-phieu/{idPhieu:guid}/gan")]
         public async Task<IActionResult> GanByPhieu(Guid idPhieu, [FromBody] LcCanTuDongGanRequestDto dto)
         {

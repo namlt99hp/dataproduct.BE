@@ -34,6 +34,24 @@ namespace dataproduct.api.Repositories.NM.LC
             return rows.Select(ToDto).ToList();
         }
 
+        public async Task<List<LcCanTuDongRawLogDto>> SyncRawLogByPhieuAsync(Guid idPhieu)
+        {
+            var phieu = await _context.BmPhieus.AsNoTracking().FirstOrDefaultAsync(p => p.Idphieu == idPhieu)
+                ?? throw new InvalidOperationException("Không tìm thấy phiếu.");
+
+            // Chạy đúng SP (SECTION 30) theo Scope của phiếu — SP tự quyết định cửa sổ ngày cần
+            // sync (lần đầu/Scope backfill từ 2026-11-01, các lần sau 3 ngày gần nhất), không
+            // nhận tham số ngày/scope riêng. Lỗi sync (vd linked server tạm không tới được) cho
+            // nổi lên tận controller để FE báo rõ cho người dùng — khác GetRawLogByPhieuAsync
+            // (chỉ đọc, không sync) dùng khi tự render lúc mở phiếu.
+            if (phieu.Scope == 2)
+                await _context.Database.ExecuteSqlRawAsync("EXEC dbo.sp_LC_CanTuDong_TP2_Sync");
+            else
+                await _context.Database.ExecuteSqlRawAsync("EXEC dbo.sp_LC_CanTuDong_TP1_Sync");
+
+            return await GetRawLogByPhieuAsync(idPhieu);
+        }
+
         public async Task<LcCanTuDongGanResultDto> GanAsync(Guid idPhieu, LcCanTuDongGanRequestDto dto)
         {
             var phieu = await _context.BmPhieus.FirstOrDefaultAsync(p => p.Idphieu == idPhieu)

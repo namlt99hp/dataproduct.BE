@@ -5,8 +5,13 @@ namespace dataproduct.api.Repositories.NM.LC
     public interface ILC_CanTuDongRepository
     {
         // Danh sách dòng cân thô (LC_CanTuDongRawLog) của đúng slot (Scope,NgaySX,Ca) của phiếu —
-        // gồm cả dòng đã IsDaGan=1 (FE tự disable checkbox, không ẩn khỏi danh sách).
+        // gồm cả dòng đã IsDaGan=1 (FE tự disable checkbox, không ẩn khỏi danh sách). CHỈ ĐỌC,
+        // không chạy SP đồng bộ — dùng để tự render khi mở tab/phiếu.
         Task<List<LcCanTuDongRawLogDto>> GetRawLogByPhieuAsync(Guid idPhieu);
+
+        // Chủ động chạy SP đồng bộ (SECTION 30) đúng Scope của phiếu rồi đọc lại — chỉ gọi khi
+        // người dùng bấm "Làm mới dữ liệu cân" (FE), không tự gọi khi mở phiếu.
+        Task<List<LcCanTuDongRawLogDto>> SyncRawLogByPhieuAsync(Guid idPhieu);
 
         // "Gán": SUM KhoiLuong các RawLogIds đã tick, ghi NGAY vào KhoiLuongAmThucTe +
         // KhoiLuongAmThucTeCanTuDong (snapshot) của dòng LC_CapLieu (SiloSo,Stt) — độc lập với

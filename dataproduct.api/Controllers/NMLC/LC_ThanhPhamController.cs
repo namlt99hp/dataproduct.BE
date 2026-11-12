@@ -425,6 +425,29 @@ namespace dataproduct.api.Controllers.NMLC
         }
 
         // =====================================================
+        // 7b. CỠ HẠT CỐC (TP1 only — TP2 dùng Chất lượng cốc ở trên thay thế)
+        // =====================================================
+
+        [HttpGet("co-hat-coc/by-phieu/{idPhieu:guid}")]
+        public async Task<IActionResult> GetCoHatCocByPhieu(Guid idPhieu)
+        {
+            return Ok(await _service.GetCoHatCocByPhieuAsync(idPhieu));
+        }
+
+        [HttpPut("co-hat-coc/by-phieu/{idPhieu:guid}")]
+        public async Task<IActionResult> SaveCoHatCocByPhieu(Guid idPhieu, [FromBody] List<CoHatCocSaveDto> items)
+        {
+            try
+            {
+                return Ok(await _service.SaveCoHatCocByPhieuAsync(idPhieu, items));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        // =====================================================
         // 6. TIÊU HAO
         // =====================================================
 

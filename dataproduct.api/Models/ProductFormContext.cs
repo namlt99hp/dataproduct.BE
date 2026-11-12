@@ -172,6 +172,7 @@ public partial class ProductFormContext : DbContext
     public virtual DbSet<LC_TP_ChiTieuCoc> LC_TP_ChiTieuCoc { get; set; }
     public virtual DbSet<LC_TP_TCNBCoc> LC_TP_TCNBCoc { get; set; }
     public virtual DbSet<LC_TP_ChatLuongCocCa> LC_TP_ChatLuongCocCa { get; set; }
+    public virtual DbSet<LC_TP_CoHatCoc> LC_TP_CoHatCoc { get; set; }
     public virtual DbSet<LC_TP_NhomTieuHao> LC_TP_NhomTieuHao { get; set; }
     public virtual DbSet<LC_TP_DanhMucTieuHao> LC_TP_DanhMucTieuHao { get; set; }
     public virtual DbSet<LC_TP_TieuHao> LC_TP_TieuHao { get; set; }
@@ -1429,6 +1430,16 @@ public partial class ProductFormContext : DbContext
         {
             entity.Property(e => e.GiaTri).HasPrecision(6, 2);
             entity.HasIndex(e => new { e.PhieuId, e.Scope, e.ChiTieuId, e.Lan }).IsUnique();
+        });
+
+        modelBuilder.Entity<LC_TP_CoHatCoc>(entity =>
+        {
+            entity.Property(e => e.PctDuoi10mm).HasPrecision(9, 4);
+            entity.Property(e => e.Pct10Den25mm).HasPrecision(9, 4);
+            entity.Property(e => e.Pct25Den80mm).HasPrecision(9, 4);
+            entity.Property(e => e.Pct40Den80mm).HasPrecision(9, 4);
+            entity.Property(e => e.PctTren80mm).HasPrecision(9, 4);
+            entity.HasIndex(e => new { e.IDPhieu, e.Stt }).IsUnique();
         });
 
         modelBuilder.Entity<LC_TP_TieuHao>(entity =>

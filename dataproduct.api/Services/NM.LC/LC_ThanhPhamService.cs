@@ -358,6 +358,13 @@ namespace dataproduct.api.Services.NMLC
 
         public Task<int> DeleteChatLuongCocAsync(Guid phieuId, int scope) => _repo.DeleteChatLuongCocAsync(phieuId, scope);
 
+        // ─── Cỡ hạt cốc (TP1 only) ───
+
+        public Task<List<CoHatCocDto>> GetCoHatCocByPhieuAsync(Guid idPhieu) => _repo.GetCoHatCocByPhieuAsync(idPhieu);
+
+        public Task<List<CoHatCocDto>> SaveCoHatCocByPhieuAsync(Guid idPhieu, List<CoHatCocSaveDto> items) =>
+            _repo.SaveCoHatCocByPhieuAsync(idPhieu, items);
+
         private static ChatLuongCocDto ToDto(LC_TP_ChatLuongCocCa e) => new()
         {
             Id = e.Id,

@@ -929,6 +929,71 @@ namespace dataproduct.api.Repositories.NMLC
                 .ExecuteDeleteAsync();
         }
 
+        // ─── Tab Cỡ hạt cốc (LC_TP_CoHatCoc) — by-phieu, TP1 only. Xem TP1.xlsx dòng 359-363:
+        // N dòng/phiếu (mỗi dòng = 1 lần lấy mẫu), không lũy kế/tồn đầu. TP2 không có mục này
+        // (có Chất lượng cốc thay thế, LC_TP_ChatLuongCocCa) — 2 mục loại trừ nhau theo Scope. ───
+
+        public async Task<List<CoHatCocDto>> GetCoHatCocByPhieuAsync(Guid idPhieu)
+        {
+            var rows = await _context.LC_TP_CoHatCoc
+                .AsNoTracking()
+                .Where(x => x.IDPhieu == idPhieu)
+                .OrderBy(x => x.Stt)
+                .ToListAsync();
+            return rows.Select(ToCoHatCocDto).ToList();
+        }
+
+        public async Task<List<CoHatCocDto>> SaveCoHatCocByPhieuAsync(Guid idPhieu, List<CoHatCocSaveDto> items)
+        {
+            var phieu = await _context.BmPhieus.FirstOrDefaultAsync(p => p.Idphieu == idPhieu)
+                ?? throw new InvalidOperationException("Không tìm thấy phiếu.");
+            if (phieu.TinhTrang == 5 || phieu.IsLock == 1)
+                throw new InvalidOperationException("Phiếu đã chốt/khóa, không thể sửa.");
+
+            var scope = phieu.Scope ?? 0;
+            var ngaySx = phieu.NgaySX;
+            var ca = phieu.Ca;
+
+            await using var tx = await _context.Database.BeginTransactionAsync();
+
+            var old = await _context.LC_TP_CoHatCoc.Where(x => x.IDPhieu == idPhieu).ToListAsync();
+            _context.LC_TP_CoHatCoc.RemoveRange(old);
+
+            var entities = items.Select(d => new LC_TP_CoHatCoc
+            {
+                IDPhieu = idPhieu,
+                NgaySX = ngaySx,
+                Ca = ca,
+                Scope = scope,
+                Stt = d.Stt,
+                ThoiGianLayMau = d.ThoiGianLayMau,
+                ViTriLayMau = d.ViTriLayMau,
+                PctDuoi10mm = d.PctDuoi10mm,
+                Pct10Den25mm = d.Pct10Den25mm,
+                Pct25Den80mm = d.Pct25Den80mm,
+                Pct40Den80mm = d.Pct40Den80mm,
+                PctTren80mm = d.PctTren80mm,
+                NgayTao = DateTime.Now
+            }).ToList();
+            _context.LC_TP_CoHatCoc.AddRange(entities);
+
+            await _context.SaveChangesAsync();
+            await tx.CommitAsync();
+            return entities.Select(ToCoHatCocDto).ToList();
+        }
+
+        private static CoHatCocDto ToCoHatCocDto(LC_TP_CoHatCoc e) => new()
+        {
+            Stt = e.Stt,
+            ThoiGianLayMau = e.ThoiGianLayMau,
+            ViTriLayMau = e.ViTriLayMau,
+            PctDuoi10mm = e.PctDuoi10mm,
+            Pct10Den25mm = e.Pct10Den25mm,
+            Pct25Den80mm = e.Pct25Den80mm,
+            Pct40Den80mm = e.Pct40Den80mm,
+            PctTren80mm = e.PctTren80mm
+        };
+
         public async Task<List<int>> FindHangMucKhongTonTaiAsync(IEnumerable<int> hangMucIds)
         {
             var ids = hangMucIds.Distinct().ToList();

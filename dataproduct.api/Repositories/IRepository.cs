@@ -727,5 +727,9 @@ namespace dataproduct.api.Repositories
         Task<List<LC_TP_ChatLuongCocCa>> ReplaceChatLuongCocAsync(
             Guid phieuId, int scope, IEnumerable<LC_TP_ChatLuongCocCa> entities);
         Task<int> DeleteChatLuongCocAsync(Guid phieuId, int scope);
+
+        // Cỡ hạt cốc (LC_TP_CoHatCoc) — by-phieu, TP1 only (TP2 dùng Chất lượng cốc ở trên thay thế)
+        Task<List<CoHatCocDto>> GetCoHatCocByPhieuAsync(Guid idPhieu);
+        Task<List<CoHatCocDto>> SaveCoHatCocByPhieuAsync(Guid idPhieu, List<CoHatCocSaveDto> items);
     }
 }

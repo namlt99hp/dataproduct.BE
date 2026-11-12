@@ -14,6 +14,8 @@ namespace dataproduct.api.Services.NM.LC
 
         public Task<List<LcCanTuDongRawLogDto>> GetRawLogByPhieuAsync(Guid idPhieu) => _repo.GetRawLogByPhieuAsync(idPhieu);
 
+        public Task<List<LcCanTuDongRawLogDto>> SyncRawLogByPhieuAsync(Guid idPhieu) => _repo.SyncRawLogByPhieuAsync(idPhieu);
+
         public Task<LcCanTuDongGanResultDto> GanAsync(Guid idPhieu, LcCanTuDongGanRequestDto dto) => _repo.GanAsync(idPhieu, dto);
 
         public Task<List<LcCanTuDongRawLogDto>> BoGanAsync(Guid idPhieu, LcCanTuDongBoGanRequestDto dto) => _repo.BoGanAsync(idPhieu, dto);
