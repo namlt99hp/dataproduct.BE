@@ -710,6 +710,18 @@ namespace dataproduct.api.Repositories
             Guid phieuId, int scope, IEnumerable<LC_TP_SuCoTrongCa> entities);
         Task<int> DeleteSuCoAsync(Guid phieuId, int scope);
 
+        // Tình hình nhân sự (LC_TP_NhanSu) — gộp vào tab Sự cố, branch theo Scope ở FE
+        Task<List<LC_TP_NhanSu>> GetNhanSuAsync(Guid phieuId, int scope);
+        Task<List<LC_TP_NhanSu>> ReplaceNhanSuAsync(
+            Guid phieuId, int scope, IEnumerable<LC_TP_NhanSu> entities);
+        Task<int> DeleteNhanSuAsync(Guid phieuId, int scope);
+
+        // 5S & Bàn giao (LC_TP_GhiChuCa) — TP1 only, Loai phân biệt '5S'/'BAN_GIAO'
+        Task<List<LC_TP_GhiChuCa>> GetGhiChuCaAsync(Guid phieuId, int scope);
+        Task<List<LC_TP_GhiChuCa>> ReplaceGhiChuCaAsync(
+            Guid phieuId, int scope, IEnumerable<LC_TP_GhiChuCa> entities);
+        Task<int> DeleteGhiChuCaAsync(Guid phieuId, int scope);
+
         // Tiêu hao (LC_TP_TieuHao) theo phiếu; danh mục hạng mục (LC_TP_DanhMucTieuHao)
         Task<List<LC_TP_NhomTieuHao>> GetNhomTieuHaoAsync();
         Task<List<LC_TP_DanhMucTieuHao>> GetDanhMucTieuHaoAsync();

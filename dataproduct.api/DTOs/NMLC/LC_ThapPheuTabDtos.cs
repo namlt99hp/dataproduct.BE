@@ -27,7 +27,7 @@ namespace dataproduct.api.DTOs.NMLC
         public string? GhiChu { get; set; }
     }
 
-    // 1 dòng = 1 cụm tháp, khớp FE TabThapPheu.tsx ThapRow. CapLenThapQuyKho/
+    // 1 dòng = 1 cụm tháp, khớp FE TabThapPheu.tsx ThapRow. CapLenThapQuyKho/NapLoQuyKho/
     // LuyKeCapLenThap/LuyKeNapLo đều CALCULATED/CROSS_REGION/CUMULATIVE ở backend.
     public class CapThapDto
     {
@@ -41,12 +41,13 @@ namespace dataproduct.api.DTOs.NMLC
         public string? GhiChu { get; set; }
     }
 
+    // NapLoQuyKho KHÔNG còn nhập tay — CALCULATED ở backend (cân bằng khối lượng, xem
+    // LC_ThanhPhamRepository.ComputeNapLoQuyKho), bị bỏ qua nếu FE gửi.
     public class CapThapSaveDto
     {
         [Required]
         public int CumThapId { get; set; }
         public decimal? DoAmThap { get; set; }
-        public decimal? NapLoQuyKho { get; set; }
         public string? GhiChu { get; set; }
     }
 

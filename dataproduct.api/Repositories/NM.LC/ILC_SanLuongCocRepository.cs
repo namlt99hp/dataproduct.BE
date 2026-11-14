@@ -17,6 +17,11 @@ namespace dataproduct.api.Repositories.NM.LC
 
         Task<SanLuongCocTabDto> SaveTabAsync(Guid idPhieu, SanLuongCocTabSaveDto dto);
 
+        // "Làm mới" — tính lại LuyKe* của các dòng Dập cốc/Cốc chuyển đã có theo kíp liền trước
+        // MỚI NHẤT, không nhận dữ liệu nhập tay mới. Dùng bởi LC_ChotLuyKeRepository (cascade
+        // "Chốt lũy kế").
+        Task<SanLuongCocTabDto> RefreshLuyKeTuCaTruocAsync(Guid idPhieu);
+
         // Gọi từ LC_BCSX_XNL_TPInitializer lúc phiếu được tạo lần đầu — tạo sẵn 1 dòng Dập cốc
         // cho mỗi vị trí (Scope đó) + 2 dòng Cốc chuyển (CHỈ Scope=1). No-op nếu phiếu đã có.
         Task InitializeAsync(BmPhieu phieu);

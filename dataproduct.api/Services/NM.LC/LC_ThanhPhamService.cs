@@ -283,6 +283,84 @@ namespace dataproduct.api.Services.NMLC
             NhanLuc = d.NhanLuc
         };
 
+        // ─── Tình hình nhân sự ───
+
+        public async Task<List<NhanSuDto>> GetNhanSuAsync(Guid phieuId, int scope)
+        {
+            var list = await _repo.GetNhanSuAsync(phieuId, scope);
+            return list.Select(ToDto).ToList();
+        }
+
+        // Lưu toàn bộ nhân sự của phiếu (xóa cũ, thêm mới); Stt theo thứ tự danh sách
+        public async Task<List<NhanSuDto>> SaveNhanSuAsync(
+            Guid phieuId, int scope, List<NhanSuSaveDto> items)
+        {
+            var saved = await _repo.ReplaceNhanSuAsync(phieuId, scope, items.Select(ToEntity).ToList());
+            return saved.Select(ToDto).ToList();
+        }
+
+        public Task<int> DeleteNhanSuAsync(Guid phieuId, int scope)
+            => _repo.DeleteNhanSuAsync(phieuId, scope);
+
+        private static NhanSuDto ToDto(LC_TP_NhanSu e) => new()
+        {
+            Id = e.Id,
+            PhieuId = e.PhieuId,
+            Scope = e.Scope,
+            Stt = e.Stt,
+            TenToNhom = e.TenToNhom,
+            SoLuongDinhBien = e.SoLuongDinhBien,
+            SoLuongHienCoDinhBien = e.SoLuongHienCoDinhBien,
+            SoLuongTrongCa = e.SoLuongTrongCa,
+            DienGiai = e.DienGiai,
+            NoiDungTuDo = e.NoiDungTuDo
+        };
+
+        private static LC_TP_NhanSu ToEntity(NhanSuSaveDto d) => new()
+        {
+            TenToNhom = d.TenToNhom,
+            SoLuongDinhBien = d.SoLuongDinhBien,
+            SoLuongHienCoDinhBien = d.SoLuongHienCoDinhBien,
+            SoLuongTrongCa = d.SoLuongTrongCa,
+            DienGiai = d.DienGiai,
+            NoiDungTuDo = d.NoiDungTuDo
+        };
+
+        // ─── 5S & Bàn giao (TP1 only) ───
+
+        public async Task<List<GhiChuCaDto>> GetGhiChuCaAsync(Guid phieuId, int scope)
+        {
+            var list = await _repo.GetGhiChuCaAsync(phieuId, scope);
+            return list.Select(ToDto).ToList();
+        }
+
+        // Lưu toàn bộ (cả 5S + Bàn giao) của phiếu + scope; Stt đánh lại riêng theo mỗi Loai
+        public async Task<List<GhiChuCaDto>> SaveGhiChuCaAsync(
+            Guid phieuId, int scope, List<GhiChuCaSaveDto> items)
+        {
+            var saved = await _repo.ReplaceGhiChuCaAsync(phieuId, scope, items.Select(ToEntity).ToList());
+            return saved.Select(ToDto).ToList();
+        }
+
+        public Task<int> DeleteGhiChuCaAsync(Guid phieuId, int scope)
+            => _repo.DeleteGhiChuCaAsync(phieuId, scope);
+
+        private static GhiChuCaDto ToDto(LC_TP_GhiChuCa e) => new()
+        {
+            Id = e.Id,
+            PhieuId = e.PhieuId,
+            Scope = e.Scope,
+            Loai = e.Loai,
+            Stt = e.Stt,
+            NoiDung = e.NoiDung
+        };
+
+        private static LC_TP_GhiChuCa ToEntity(GhiChuCaSaveDto d) => new()
+        {
+            Loai = d.Loai,
+            NoiDung = d.NoiDung
+        };
+
         // ─── Chất lượng cốc ───
 
         private const int SoLanChatLuongCoc = 6;

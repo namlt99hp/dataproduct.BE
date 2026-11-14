@@ -2,6 +2,7 @@ using dataproduct.api.DTOs.NM.LC;
 using dataproduct.api.Models;
 using dataproduct.api.Models.MasterData;
 using dataproduct.api.Models.NMLC;
+using dataproduct.api.Utils;
 using Microsoft.EntityFrameworkCore;
 
 namespace dataproduct.api.Repositories.NM.LC
@@ -231,6 +232,17 @@ namespace dataproduct.api.Repositories.NM.LC
             return (await GetByPhieuAsync(idPhieu)).First(s => s.IdDanhMucChiTiet == idDanhMucChiTiet);
         }
 
+        // "Làm mới" — tính lại F16/F17/LuyKe của các dòng ĐÃ CÓ của phiếu theo dữ liệu MỚI NHẤT
+        // của kíp liền trước (mirror LC_PhoiTronRepository.RefreshLuyKeTuCaTruocAsync) — KHÔNG
+        // nhận dữ liệu nhập tay mới, chỉ dùng KhoiLuongAm/DoAm hiện có của chính các dòng đó.
+        // Dùng bởi LC_ChotLuyKeRepository khi cascade "Chốt lũy kế".
+        public async Task<List<LcXuatCapSlotDto>> RefreshLuyKeTuCaTruocAsync(Guid idPhieu)
+        {
+            await GetEditablePhieuAsync(idPhieu);
+            await RecomputeDerivedAsync(idPhieu);
+            return await GetByPhieuAsync(idPhieu);
+        }
+
         // ─── Helpers ─────────────────────────────────────────────────────────────────────
 
         private async Task<BmPhieu> GetEditablePhieuAsync(Guid idPhieu)
@@ -357,12 +369,17 @@ namespace dataproduct.api.Repositories.NM.LC
             if (ngaySx == null || ca == null) return trongCaThisShift;
             if (ngaySx.Value.Day == 1 && ca == 1) return trongCaThisShift;
 
+            var mocChot = await LcLuyKeChotMocHelper.GetMocChotGanNhatAsync(_context, scope, ngaySx.Value, ca.Value);
+
             var prev = await (
                 from d in _context.LC_XuatCap.AsNoTracking()
                 where d.Scope == scope
                     && d.NhomTongHop == nhomTongHop
                     && d.IDPhieu != idPhieu
                     && (d.NgaySX < ngaySx || (d.NgaySX == ngaySx && d.Ca < ca))
+                    && (mocChot == null || d.NgaySX > mocChot.Value.NgaySX
+                        || (d.NgaySX == mocChot.Value.NgaySX && d.Ca > mocChot.Value.Ca))
+                    && !_context.BmPhieus.Any(bp => bp.Idphieu == d.IDPhieu && bp.IsLock == 1)
                 orderby d.NgaySX descending, d.Ca descending
                 select d.LuyKe
             ).FirstOrDefaultAsync();

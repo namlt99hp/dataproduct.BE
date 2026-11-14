@@ -69,5 +69,18 @@ namespace dataproduct.api.Controllers.NM.LC
                 return BadRequest(new { message = ex.Message });
             }
         }
+
+        [HttpPost("by-phieu/{idPhieu:guid}/lam-moi")]
+        public async Task<IActionResult> RefreshByPhieu(Guid idPhieu)
+        {
+            try
+            {
+                return Ok(await _service.RefreshLuyKeTuCaTruocAsync(idPhieu));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
     }
 }

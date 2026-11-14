@@ -169,6 +169,8 @@ public partial class ProductFormContext : DbContext
     public virtual DbSet<LC_TP_CapThap> LC_TP_CapThap { get; set; }
     public virtual DbSet<LC_TP_KetQuaPhanTichThan> LC_TP_KetQuaPhanTichThan { get; set; }
     public virtual DbSet<LC_TP_SuCoTrongCa> LC_TP_SuCoTrongCa { get; set; }
+    public virtual DbSet<LC_TP_NhanSu> LC_TP_NhanSu { get; set; }
+    public virtual DbSet<LC_TP_GhiChuCa> LC_TP_GhiChuCa { get; set; }
     public virtual DbSet<LC_TP_ChiTieuCoc> LC_TP_ChiTieuCoc { get; set; }
     public virtual DbSet<LC_TP_TCNBCoc> LC_TP_TCNBCoc { get; set; }
     public virtual DbSet<LC_TP_ChatLuongCocCa> LC_TP_ChatLuongCocCa { get; set; }
@@ -185,6 +187,7 @@ public partial class ProductFormContext : DbContext
     public virtual DbSet<LC_TP_CocChuyenNhaSang> LC_TP_CocChuyenNhaSang { get; set; }
     public virtual DbSet<LC_CanTuDongRawLog> LC_CanTuDongRawLog { get; set; }
     public virtual DbSet<LC_CanTuDongGanChiTiet> LC_CanTuDongGanChiTiet { get; set; }
+    public virtual DbSet<LC_LuyKeChotMoc> LC_LuyKeChotMoc { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -1418,6 +1421,16 @@ public partial class ProductFormContext : DbContext
         {
             entity.Property(e => e.PhieuId).HasColumnName("PhieuID");
             entity.HasIndex(e => new { e.PhieuId, e.Scope });
+        });
+
+        modelBuilder.Entity<LC_TP_NhanSu>(entity =>
+        {
+            entity.HasIndex(e => new { e.PhieuId, e.Scope });
+        });
+
+        modelBuilder.Entity<LC_TP_GhiChuCa>(entity =>
+        {
+            entity.HasIndex(e => new { e.PhieuId, e.Scope, e.Loai });
         });
 
         modelBuilder.Entity<LC_TP_TCNBCoc>(entity =>

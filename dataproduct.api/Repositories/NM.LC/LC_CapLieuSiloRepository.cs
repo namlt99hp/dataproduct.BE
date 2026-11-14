@@ -320,6 +320,7 @@ namespace dataproduct.api.Repositories.NM.LC
                          && x.Scope == scope
                          && x.Idphieu != phieu.Idphieu
                          && (x.IsDelete == null || x.IsDelete == 0)
+                         && x.IsLock != 1
                          && (x.NgaySX < ngaySx || (x.NgaySX == ngaySx && x.Ca < ca)))
                 .OrderByDescending(x => x.NgaySX)
                 .ThenByDescending(x => x.Ca)

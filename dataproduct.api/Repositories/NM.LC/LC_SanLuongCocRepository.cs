@@ -1,6 +1,7 @@
 using dataproduct.api.DTOs.NMLC;
 using dataproduct.api.Models;
 using dataproduct.api.Models.NMLC;
+using dataproduct.api.Utils;
 using Microsoft.EntityFrameworkCore;
 
 namespace dataproduct.api.Repositories.NM.LC
@@ -13,12 +14,19 @@ namespace dataproduct.api.Repositories.NM.LC
     //     LC_XuatCapDanhMucCum (Σ xuất đi) — NULL = dùng chung, có giá trị = riêng 1 cụm.
     //   - tỉ lệ cụm = LC_TP_DapCoc.KhoiLuongCocTrongCa (Tháp dập + CDQ) của cụm / tổng.
     //   - Bụi cốc KHÔNG có số hạng tồn silo (Excel gốc không dùng), chỉ từ Cấp cốc.
-    //   - Cốc chuyển qua X.NL,TP2 (CHỈ Scope=1): Δ Nhà sàng 2 vào nhóm dùng chung, Δ Nhà sàng 3
-    //     cộng thẳng vào cụm "125" — xem công thức K221/O221 TP1.xlsx (G267 trong dấu nhân tỉ
-    //     lệ, N267 cộng thẳng ngoài).
+    //   - Cốc chuyển qua X.NL,TP2 (CHỈ Scope=1): Δ Nhà sàng 2 VÀ Nhà sàng 3 đều cộng thẳng 100%
+    //     vào cụm "125" (xem ComputeSharedAndDirect — SỬA 2026-11-14, Excel K221/O221 xử lý 2 Nhà
+    //     sàng không nhất quán do lỗi copy-formula, đã chuẩn hoá về cùng 1 quy tắc).
     // LƯU Ý (CHƯA xác nhận hoàn toàn với nghiệp vụ, xem .claude/state/LuyenCoc.md): mặc định
-    // ID_CumSanXuat = NULL (dùng chung) cho MỌI silo/nơi nhận hiện có — người dùng cần tự gán
-    // lại qua trang quản lý Silo/Cấp cốc để khớp đúng Excel gốc theo từng cột/nơi nhận cụ thể.
+    // ID_CumSanXuat = NULL (dùng chung) cho MỌI silo — người dùng cần tự gán lại qua trang quản
+    // lý Silo tồn để khớp đúng Excel gốc theo từng silo cụ thể (riêng "Nhà sàng 3"/"Silo thành
+    // phẩm 2" phải gán ĐÚNG hết, không để NULL — đọc được từ K221/K222 TP1.xlsx: 2 card này cộng
+    // THẲNG 100% vào cụm "125", không chia tỉ lệ như "Nhà sàng 2"/"Silo thành phẩm 1").
+    // RIÊNG `LC_XuatCapDanhMucCum` (Σ xuất đi) đã SEED SẴN ID_CumSanXuat đúng cho TP1 (migration
+    // SECTION 25-26, UPDATE theo `LC_XuatCapCum.Ma='5'`) — không cần người dùng tự gán tay, vì
+    // ranh giới dùng-chung/riêng-cụm ở đây khớp CHÍNH XÁC ranh giới "Cụm Lò cao" (`LC_XuatCapCum`,
+    // `Ma='1234'` dùng chung, `Ma='5'` riêng cụm "125") đã có sẵn trong danh mục — không phải
+    // chọn tuỳ ý theo từng Nơi nhận như Tồn silo.
     public class LC_SanLuongCocRepository : ILC_SanLuongCocRepository
     {
         private readonly ProductFormContext _context;
@@ -190,6 +198,46 @@ namespace dataproduct.api.Repositories.NM.LC
             return await GetTabAsync(idPhieu);
         }
 
+        // "Làm mới" — tính lại LuyKe* của các dòng Dập cốc/Cốc chuyển ĐÃ CÓ theo dữ liệu MỚI
+        // NHẤT của kíp liền trước (mirror LC_PhoiTronRepository.RefreshLuyKeTuCaTruocAsync) —
+        // KHÔNG nhận dữ liệu nhập tay mới, dùng BanhCocTiepNhan/KhoiLuongCocTrongCa/TonCuoi/TonDau
+        // hiện có của chính các dòng đó. Dùng bởi LC_ChotLuyKeRepository khi cascade "Chốt lũy kế".
+        public async Task<SanLuongCocTabDto> RefreshLuyKeTuCaTruocAsync(Guid idPhieu)
+        {
+            var phieu = await _context.BmPhieus.FirstOrDefaultAsync(p => p.Idphieu == idPhieu)
+                ?? throw new InvalidOperationException("Không tìm thấy phiếu.");
+            if (phieu.TinhTrang == 5 || phieu.IsLock == 1)
+                throw new InvalidOperationException("Phiếu đã chốt/khóa, không thể làm mới.");
+
+            var scope = phieu.Scope ?? 0;
+            var ngaySx = phieu.NgaySX;
+            var ca = phieu.Ca;
+
+            var dapCocRows = await _context.LC_TP_DapCoc.Where(x => x.IDPhieu == idPhieu).ToListAsync();
+            foreach (var row in dapCocRows)
+            {
+                row.LuyKeBanhCocTiepNhan = await ComputeLuyKeDapCocAsync(
+                    idPhieu, scope, ngaySx, ca, row.ID_ViTri, row.BanhCocTiepNhan, x => x.LuyKeBanhCocTiepNhan);
+                row.LuyKeKhoiLuongCocTrongCa = await ComputeLuyKeDapCocAsync(
+                    idPhieu, scope, ngaySx, ca, row.ID_ViTri, row.KhoiLuongCocTrongCa, x => x.LuyKeKhoiLuongCocTrongCa);
+            }
+
+            if (scope == 1)
+            {
+                var chuyenRows = await _context.LC_TP_CocChuyenNhaSang.Where(x => x.IDPhieu == idPhieu).ToListAsync();
+                foreach (var row in chuyenRows)
+                {
+                    var chenhLech = row.TonCuoi == null && row.TonDau == null
+                        ? (decimal?)null
+                        : (row.TonCuoi ?? 0) - (row.TonDau ?? 0);
+                    row.LuyKe = await ComputeLuyKeChuyenAsync(idPhieu, scope, ngaySx, ca, row.NhaSang, chenhLech);
+                }
+            }
+
+            await _context.SaveChangesAsync();
+            return await GetTabAsync(idPhieu);
+        }
+
         public async Task InitializeAsync(BmPhieu phieu)
         {
             if (phieu.TinhTrang == 5 || phieu.IsLock == 1) return;
@@ -242,9 +290,14 @@ namespace dataproduct.api.Repositories.NM.LC
             if (ngaySx == null || ca == null) return giaTriCaNay;
             if (ngaySx.Value.Day == 1 && ca == 1) return giaTriCaNay;
 
+            var mocChot = await LcLuyKeChotMocHelper.GetMocChotGanNhatAsync(_context, scope, ngaySx.Value, ca.Value);
+
             var prev = await _context.LC_TP_DapCoc.AsNoTracking()
                 .Where(x => x.Scope == scope && x.ID_ViTri == idViTri && x.IDPhieu != idPhieu
-                    && (x.NgaySX < ngaySx || (x.NgaySX == ngaySx && x.Ca < ca)))
+                    && (x.NgaySX < ngaySx || (x.NgaySX == ngaySx && x.Ca < ca))
+                    && (mocChot == null || x.NgaySX > mocChot.Value.NgaySX
+                        || (x.NgaySX == mocChot.Value.NgaySX && x.Ca > mocChot.Value.Ca))
+                    && !_context.BmPhieus.Any(bp => bp.Idphieu == x.IDPhieu && bp.IsLock == 1))
                 .OrderByDescending(x => x.NgaySX).ThenByDescending(x => x.Ca)
                 .Select(luyKeField)
                 .FirstOrDefaultAsync();
@@ -259,9 +312,14 @@ namespace dataproduct.api.Repositories.NM.LC
             if (ngaySx == null || ca == null) return chenhLechCaNay;
             if (ngaySx.Value.Day == 1 && ca == 1) return chenhLechCaNay;
 
+            var mocChot = await LcLuyKeChotMocHelper.GetMocChotGanNhatAsync(_context, scope, ngaySx.Value, ca.Value);
+
             var prev = await _context.LC_TP_CocChuyenNhaSang.AsNoTracking()
                 .Where(x => x.Scope == scope && x.NhaSang == nhaSang && x.IDPhieu != idPhieu
-                    && (x.NgaySX < ngaySx || (x.NgaySX == ngaySx && x.Ca < ca)))
+                    && (x.NgaySX < ngaySx || (x.NgaySX == ngaySx && x.Ca < ca))
+                    && (mocChot == null || x.NgaySX > mocChot.Value.NgaySX
+                        || (x.NgaySX == mocChot.Value.NgaySX && x.Ca > mocChot.Value.Ca))
+                    && !_context.BmPhieus.Any(bp => bp.Idphieu == x.IDPhieu && bp.IsLock == 1))
                 .OrderByDescending(x => x.NgaySX).ThenByDescending(x => x.Ca)
                 .Select(x => x.LuyKe)
                 .FirstOrDefaultAsync();
@@ -431,14 +489,23 @@ namespace dataproduct.api.Repositories.NM.LC
                 }
             }
 
-            if (scope == 1 && loaiCoc == "10-80mm")
+            if (scope == 1 && loaiCoc == "10-80mm" && cum125Id != null)
             {
+                // Cả NS2 và NS3 cộng THẲNG 100% vào cụm "125" — KHÔNG chia theo tỉ lệ Dập cốc.
+                // SỬA 2026-11-14 (đọc formula thật TP1.xlsx): K221 có để G267 (NS2) trong cùng
+                // bracket nhân tỉ lệ125, NHƯNG O221 lại KHÔNG có G267 — nghĩa là cụm "34" không
+                // nhận gì, còn cụm "125" cũng chỉ nhận tỉ lệ125×G267 (không phải 100%), phần còn
+                // lại coi như mất — rất có khả năng tác giả Excel quên thêm G267 vào O221 khi copy
+                // từ K221 (NS2 và NS3 cùng là "Cốc chuyển qua X.NL,TP2", không có lý do vật lý nào
+                // để xử lý khác N267 — N267 đã luôn 100% direct cụm "125", không qua tỉ lệ). Thay
+                // vì tái tạo đúng chỗ rò rỉ đó, xử lý THỐNG NHẤT cả 2 Nhà sàng theo đúng quy tắc
+                // N267 (100% direct) — tự nhất quán, không mất số liệu, và dễ mở rộng nếu sau này
+                // thêm Nhà sàng mới (chỉ cần thêm 1 nhánh NhaSang→cụm, không cần nghĩ lại tỉ lệ).
                 foreach (var ch in chuyenRows)
                 {
                     if (ch.TonCuoi == null && ch.TonDau == null) continue;
                     var delta = (ch.TonCuoi ?? 0m) - (ch.TonDau ?? 0m);
-                    if (ch.NhaSang == "NS2") shared += delta;
-                    else if (ch.NhaSang == "NS3" && cum125Id != null)
+                    if (ch.NhaSang == "NS2" || ch.NhaSang == "NS3")
                         direct[cum125Id.Value] = direct.GetValueOrDefault(cum125Id.Value) + delta;
                 }
             }
@@ -451,10 +518,16 @@ namespace dataproduct.api.Repositories.NM.LC
             if (ngaySx == null || ca == null) return new List<Guid> { currentIdPhieu };
 
             var resetDate = new DateOnly(ngaySx.Value.Year, ngaySx.Value.Month, 1);
+            // Mốc "Chốt lũy kế" thủ công gần nhất — nếu MỚI HƠN mốc lịch ngày1 ở trên, kỳ lũy kế
+            // phải tính từ phiên NGAY SAU mốc chốt đó thay vì từ ngày 1 (xem LcLuyKeChotMocHelper).
+            var mocChot = await LcLuyKeChotMocHelper.GetMocChotGanNhatAsync(_context, scope, ngaySx.Value, ca.Value);
             var ids = await _context.BmPhieus.AsNoTracking()
                 .Where(p => p.Scope == scope
                     && p.NgaySX >= resetDate
-                    && (p.NgaySX < ngaySx || (p.NgaySX == ngaySx && p.Ca <= ca)))
+                    && (p.NgaySX < ngaySx || (p.NgaySX == ngaySx && p.Ca <= ca))
+                    && (mocChot == null || p.NgaySX > mocChot.Value.NgaySX
+                        || (p.NgaySX == mocChot.Value.NgaySX && p.Ca > mocChot.Value.Ca))
+                    && p.IsLock != 1)
                 .Select(p => p.Idphieu)
                 .ToListAsync();
             if (!ids.Contains(currentIdPhieu)) ids.Add(currentIdPhieu);

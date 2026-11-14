@@ -3,8 +3,9 @@ namespace dataproduct.api.Models.NMLC
     // Giao dịch "Cấp lên tháp / Nạp lò" theo kíp — 1 dòng/cụm tháp/phiếu. Thay thế phần Tháp
     // của LC_TP_ThapThan_ChiTiet cũ (xem SECTION 16 lc_bcxs_xnl_tp.sql). CapLenThapQuyKho =
     // F07 (CROSS_REGION từ LC_PhoiTron, tính lại mỗi lần Get/Save, KHÔNG snapshot);
-    // LuyKeCapLenThap/LuyKeNapLo = F08 (CUMULATIVE, mốc reset Ca1/ngày1); NapLoQuyKho nhập
-    // tay tạm (OQ-06 chưa rõ nguồn).
+    // LuyKeCapLenThap/LuyKeNapLo = F08 (CUMULATIVE, mốc reset Ca1/ngày1); NapLoQuyKho = F09
+    // (CALCULATED, cân bằng khối lượng — xem LC_ThanhPhamRepository.ComputeNapLoQuyKho, thay
+    // cho giá trị nhập tay cũ theo OQ-06 đã lỗi thời).
     public class LC_TP_CapThap
     {
         public int Id { get; set; }

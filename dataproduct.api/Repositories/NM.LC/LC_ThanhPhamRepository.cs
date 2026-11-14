@@ -2,6 +2,7 @@ using dataproduct.api.DTOs.NMLC;
 using dataproduct.api.Models;
 using dataproduct.api.Models.NMLC;
 using dataproduct.api.Repositories;
+using dataproduct.api.Utils;
 using Microsoft.EntityFrameworkCore;
 
 namespace dataproduct.api.Repositories.NMLC
@@ -252,32 +253,12 @@ namespace dataproduct.api.Repositories.NMLC
                 .Where(x => x.IDPhieu == idPhieu)
                 .ToDictionaryAsync(x => x.CumThapId);
 
-            // Lưu Tháp trước — Phễu cần DoAmThap của Tháp chứa nó để tính F06a/F06b.
-            var doAmThapByCum = new Dictionary<int, decimal?>();
-            foreach (var d in dto.Thap)
-            {
-                if (!cumThaps.TryGetValue(d.CumThapId, out var cum)) continue;
-                doAmThapByCum[d.CumThapId] = d.DoAmThap;
-
-                if (!existingCapThap.TryGetValue(d.CumThapId, out var row))
-                {
-                    row = new LC_TP_CapThap { IDPhieu = idPhieu, CumThapId = d.CumThapId, NgayTao = DateTime.Now };
-                    _context.LC_TP_CapThap.Add(row);
-                    existingCapThap[d.CumThapId] = row;
-                }
-
-                row.NgaySX = ngaySx;
-                row.Ca = ca;
-                row.Scope = scope;
-                row.DoAmThap = d.DoAmThap;
-                row.NapLoQuyKho = d.NapLoQuyKho;
-                row.GhiChu = d.GhiChu;
-                row.CapLenThapQuyKho = await ComputeCapLenThapAsync(idPhieu, scope, d.CumThapId);
-                row.LuyKeCapLenThap = await ComputeLuyKeThapAsync(
-                    idPhieu, scope, ngaySx, ca, d.CumThapId, row.CapLenThapQuyKho, x => x.LuyKeCapLenThap);
-                row.LuyKeNapLo = await ComputeLuyKeThapAsync(
-                    idPhieu, scope, ngaySx, ca, d.CumThapId, d.NapLoQuyKho, x => x.LuyKeNapLo);
-            }
+            // Lưu Phễu trước — cần DoAmThap của Tháp chứa nó để tính F06a/F06b (đọc trực tiếp từ
+            // dto.Thap, không cần đợi Tháp lưu xong). Tháp lưu SAU vì NapLoQuyKho (F09) cần
+            // KLTonDauQuyKho/KLTonCuoiQuyKho vừa tính của các phễu thuộc tháp đó.
+            var doAmThapByCum = dto.Thap
+                .Where(d => cumThaps.ContainsKey(d.CumThapId))
+                .ToDictionary(d => d.CumThapId, d => d.DoAmThap);
 
             foreach (var d in dto.Pheu)
             {
@@ -304,6 +285,38 @@ namespace dataproduct.api.Repositories.NMLC
                 row.KLTonCuoiQuyKho = ComputeKhoiLuongKho(row.KLAmTonCuoi, doAmThap);
             }
 
+            // F09 — xem ComputeNapLoQuyKho. Gom theo ThapThanId từ existingTonPheu (đã cập nhật ở
+            // loop trên, cùng object reference) + pheuMasterById, không query lại DB.
+            var pheuRowsByCum = existingTonPheu.Values
+                .Where(r => pheuMasterById.ContainsKey(r.PheuId))
+                .GroupBy(r => pheuMasterById[r.PheuId].ThapThanId)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            foreach (var d in dto.Thap)
+            {
+                if (!cumThaps.TryGetValue(d.CumThapId, out var cum)) continue;
+
+                if (!existingCapThap.TryGetValue(d.CumThapId, out var row))
+                {
+                    row = new LC_TP_CapThap { IDPhieu = idPhieu, CumThapId = d.CumThapId, NgayTao = DateTime.Now };
+                    _context.LC_TP_CapThap.Add(row);
+                    existingCapThap[d.CumThapId] = row;
+                }
+
+                row.NgaySX = ngaySx;
+                row.Ca = ca;
+                row.Scope = scope;
+                row.DoAmThap = d.DoAmThap;
+                row.GhiChu = d.GhiChu;
+                row.CapLenThapQuyKho = await ComputeCapLenThapAsync(idPhieu, scope, d.CumThapId);
+                row.NapLoQuyKho = ComputeNapLoQuyKho(
+                    pheuRowsByCum.GetValueOrDefault(d.CumThapId) ?? new List<LC_TP_TonPheu>(), row.CapLenThapQuyKho);
+                row.LuyKeCapLenThap = await ComputeLuyKeThapAsync(
+                    idPhieu, scope, ngaySx, ca, d.CumThapId, row.CapLenThapQuyKho, x => x.LuyKeCapLenThap);
+                row.LuyKeNapLo = await ComputeLuyKeThapAsync(
+                    idPhieu, scope, ngaySx, ca, d.CumThapId, row.NapLoQuyKho, x => x.LuyKeNapLo);
+            }
+
             await _context.SaveChangesAsync();
             return await GetThapPheuTabAsync(idPhieu);
         }
@@ -323,10 +336,23 @@ namespace dataproduct.api.Repositories.NMLC
                 row.KLTonDauQuyKho = await ComputeTonDauPheuAsync(idPhieu, scope, phieu.NgaySX, phieu.Ca, row.PheuId);
             }
 
+            // F09 — NapLoQuyKho phụ thuộc KLTonDauQuyKho vừa làm mới ở trên, nên phải tính lại ở
+            // đây thay vì giữ giá trị cũ (xem ComputeNapLoQuyKho).
+            var pheuIds = tonPheuRows.Select(r => r.PheuId).Distinct().ToList();
+            var thapThanIdByPheu = await _context.LC_TP_ThapThan_Pheu.AsNoTracking()
+                .Where(p => pheuIds.Contains(p.Id))
+                .ToDictionaryAsync(p => p.Id, p => p.ThapThanId);
+            var pheuRowsByCum = tonPheuRows
+                .Where(r => thapThanIdByPheu.ContainsKey(r.PheuId))
+                .GroupBy(r => thapThanIdByPheu[r.PheuId])
+                .ToDictionary(g => g.Key, g => g.ToList());
+
             var capThapRows = await _context.LC_TP_CapThap.Where(x => x.IDPhieu == idPhieu).ToListAsync();
             foreach (var row in capThapRows)
             {
                 row.CapLenThapQuyKho = await ComputeCapLenThapAsync(idPhieu, scope, row.CumThapId);
+                row.NapLoQuyKho = ComputeNapLoQuyKho(
+                    pheuRowsByCum.GetValueOrDefault(row.CumThapId) ?? new List<LC_TP_TonPheu>(), row.CapLenThapQuyKho);
                 row.LuyKeCapLenThap = await ComputeLuyKeThapAsync(
                     idPhieu, scope, phieu.NgaySX, phieu.Ca, row.CumThapId, row.CapLenThapQuyKho, x => x.LuyKeCapLenThap);
                 row.LuyKeNapLo = await ComputeLuyKeThapAsync(
@@ -422,9 +448,14 @@ namespace dataproduct.api.Repositories.NMLC
             if (ngaySx == null || ca == null) return giaTriCaNay;
             if (ngaySx.Value.Day == 1 && ca == 1) return giaTriCaNay;
 
+            var mocChot = await LcLuyKeChotMocHelper.GetMocChotGanNhatAsync(_context, scope, ngaySx.Value, ca.Value);
+
             var prevQuery = _context.LC_TP_CapThap.AsNoTracking()
                 .Where(x => x.Scope == scope && x.CumThapId == cumThapId && x.IDPhieu != idPhieu
-                    && (x.NgaySX < ngaySx || (x.NgaySX == ngaySx && x.Ca < ca)))
+                    && (x.NgaySX < ngaySx || (x.NgaySX == ngaySx && x.Ca < ca))
+                    && (mocChot == null || x.NgaySX > mocChot.Value.NgaySX
+                        || (x.NgaySX == mocChot.Value.NgaySX && x.Ca > mocChot.Value.Ca))
+                    && !_context.BmPhieus.Any(bp => bp.Idphieu == x.IDPhieu && bp.IsLock == 1))
                 .OrderByDescending(x => x.NgaySX).ThenByDescending(x => x.Ca);
 
             var prev = await prevQuery.Select(luyKeField).FirstOrDefaultAsync();
@@ -440,7 +471,8 @@ namespace dataproduct.api.Repositories.NMLC
 
             var prev = await _context.LC_TP_TonPheu.AsNoTracking()
                 .Where(x => x.Scope == scope && x.PheuId == pheuId && x.IDPhieu != idPhieu
-                    && (x.NgaySX < ngaySx || (x.NgaySX == ngaySx && x.Ca < ca)))
+                    && (x.NgaySX < ngaySx || (x.NgaySX == ngaySx && x.Ca < ca))
+                    && !_context.BmPhieus.Any(bp => bp.Idphieu == x.IDPhieu && bp.IsLock == 1))
                 .OrderByDescending(x => x.NgaySX).ThenByDescending(x => x.Ca)
                 .Select(x => x.KLTonCuoiQuyKho)
                 .FirstOrDefaultAsync();
@@ -489,6 +521,23 @@ namespace dataproduct.api.Repositories.NMLC
         {
             if (klAm == null || doAm == null) return null;
             return Math.Round(klAm.Value * (100 - doAm.Value) / 100m, 3);
+        }
+
+        // F09 — Than nạp lò = cân bằng khối lượng: (Σ KLTonDauQuyKho + CapLenThapQuyKho) −
+        // Σ KLTonCuoiQuyKho của các phễu thuộc tháp đó. Chốt công thức theo yêu cầu người dùng
+        // 2026-11-13, thay cho giá trị nhập tay cũ (xem OQ-06, LC_01 mục 7 — đã lỗi thời).
+        // NULL-behavior: không có số liệu nào (cả phễu lẫn CapLenThapQuyKho đều null/rỗng) → NULL;
+        // có ít nhất 1 phần → phần thiếu còn lại coi = 0 (giống cách tính "Trong ca" ở
+        // LC_XuatCapRepository.RecomputeDerivedAsync).
+        private static decimal? ComputeNapLoQuyKho(List<LC_TP_TonPheu> pheuRows, decimal? capLenThapQuyKho)
+        {
+            var anyData = capLenThapQuyKho != null
+                || pheuRows.Any(r => r.KLTonDauQuyKho != null || r.KLTonCuoiQuyKho != null);
+            if (!anyData) return null;
+
+            var tonDauSum = pheuRows.Sum(r => r.KLTonDauQuyKho ?? 0);
+            var tonCuoiSum = pheuRows.Sum(r => r.KLTonCuoiQuyKho ?? 0);
+            return Math.Round(tonDauSum + (capLenThapQuyKho ?? 0) - tonCuoiSum, 3);
         }
 
         // ─── Danh mục Nơi nhận (Bụi cốc) ───
@@ -647,6 +696,11 @@ namespace dataproduct.api.Repositories.NMLC
             {
                 var tonDau = await ComputeTonDauBuiCocAsync(idPhieu, scope, phieu.NgaySX, phieu.Ca);
                 header.TonDauKyQuyKho = tonDau;
+                // SỬA 2026-11-13: trước đây "Làm mới" bỏ sót LuyKeSanLuong (chỉ SaveBuiCocTabAsync
+                // mới tính) — cascade "Chốt lũy kế" (LC_ChotLuyKeRepository) cần hàm này tính lại
+                // ĐẦY ĐỦ mọi cột LuyKe, không chỉ Tồn đầu/Tồn cuối.
+                header.LuyKeSanLuong = await ComputeLuyKeBuiCocSanLuongAsync(
+                    idPhieu, scope, phieu.NgaySX, phieu.Ca, header.SanLuongTrongCa);
                 header.TonCuoiKyQuyKho = tonDau + header.SanLuongTrongCa
                     - await _context.LC_TP_BuiCocXuat.Where(x => x.IDPhieu == idPhieu).SumAsync(x => x.KhoiLuong ?? 0);
             }
@@ -690,9 +744,14 @@ namespace dataproduct.api.Repositories.NMLC
             if (ngaySx == null || ca == null) return sanLuongCaNay;
             if (ngaySx.Value.Day == 1 && ca == 1) return sanLuongCaNay;
 
+            var mocChot = await LcLuyKeChotMocHelper.GetMocChotGanNhatAsync(_context, scope, ngaySx.Value, ca.Value);
+
             var prev = await _context.LC_TP_BuiCoc.AsNoTracking()
                 .Where(x => x.Scope == scope && x.IDPhieu != idPhieu
-                    && (x.NgaySX < ngaySx || (x.NgaySX == ngaySx && x.Ca < ca)))
+                    && (x.NgaySX < ngaySx || (x.NgaySX == ngaySx && x.Ca < ca))
+                    && (mocChot == null || x.NgaySX > mocChot.Value.NgaySX
+                        || (x.NgaySX == mocChot.Value.NgaySX && x.Ca > mocChot.Value.Ca))
+                    && !_context.BmPhieus.Any(bp => bp.Idphieu == x.IDPhieu && bp.IsLock == 1))
                 .OrderByDescending(x => x.NgaySX).ThenByDescending(x => x.Ca)
                 .Select(x => x.LuyKeSanLuong)
                 .FirstOrDefaultAsync();
@@ -707,7 +766,8 @@ namespace dataproduct.api.Repositories.NMLC
 
             var prev = await _context.LC_TP_BuiCoc.AsNoTracking()
                 .Where(x => x.Scope == scope && x.IDPhieu != idPhieu
-                    && (x.NgaySX < ngaySx || (x.NgaySX == ngaySx && x.Ca < ca)))
+                    && (x.NgaySX < ngaySx || (x.NgaySX == ngaySx && x.Ca < ca))
+                    && !_context.BmPhieus.Any(bp => bp.Idphieu == x.IDPhieu && bp.IsLock == 1))
                 .OrderByDescending(x => x.NgaySX).ThenByDescending(x => x.Ca)
                 .Select(x => x.TonCuoiKyQuyKho)
                 .FirstOrDefaultAsync();
@@ -722,9 +782,14 @@ namespace dataproduct.api.Repositories.NMLC
             if (ngaySx == null || ca == null) return khoiLuongCaNay;
             if (ngaySx.Value.Day == 1 && ca == 1) return khoiLuongCaNay;
 
+            var mocChot = await LcLuyKeChotMocHelper.GetMocChotGanNhatAsync(_context, scope, ngaySx.Value, ca.Value);
+
             var prev = await _context.LC_TP_BuiCocXuat.AsNoTracking()
                 .Where(x => x.Scope == scope && x.NoiNhanId == noiNhanId && x.IDPhieu != idPhieu
-                    && (x.NgaySX < ngaySx || (x.NgaySX == ngaySx && x.Ca < ca)))
+                    && (x.NgaySX < ngaySx || (x.NgaySX == ngaySx && x.Ca < ca))
+                    && (mocChot == null || x.NgaySX > mocChot.Value.NgaySX
+                        || (x.NgaySX == mocChot.Value.NgaySX && x.Ca > mocChot.Value.Ca))
+                    && !_context.BmPhieus.Any(bp => bp.Idphieu == x.IDPhieu && bp.IsLock == 1))
                 .OrderByDescending(x => x.NgaySX).ThenByDescending(x => x.Ca)
                 .Select(x => x.LuyKeQuyKho)
                 .FirstOrDefaultAsync();
@@ -812,6 +877,98 @@ namespace dataproduct.api.Repositories.NMLC
         public async Task<int> DeleteSuCoAsync(Guid phieuId, int scope)
         {
             return await _context.LC_TP_SuCoTrongCa
+                .Where(x => x.PhieuId == phieuId && x.Scope == scope)
+                .ExecuteDeleteAsync();
+        }
+
+        // ─── Tình hình nhân sự (LC_TP_NhanSu) ───
+
+        public async Task<List<LC_TP_NhanSu>> GetNhanSuAsync(Guid phieuId, int scope)
+        {
+            return await _context.LC_TP_NhanSu
+                .AsNoTracking()
+                .Where(x => x.PhieuId == phieuId && x.Scope == scope)
+                .OrderBy(x => x.Stt)
+                .ToListAsync();
+        }
+
+        public async Task<List<LC_TP_NhanSu>> ReplaceNhanSuAsync(
+            Guid phieuId, int scope, IEnumerable<LC_TP_NhanSu> entities)
+        {
+            var list = entities.ToList();
+
+            await using var tx = await _context.Database.BeginTransactionAsync();
+
+            var old = await _context.LC_TP_NhanSu
+                .Where(x => x.PhieuId == phieuId && x.Scope == scope)
+                .ToListAsync();
+            _context.LC_TP_NhanSu.RemoveRange(old);
+
+            for (var i = 0; i < list.Count; i++)
+            {
+                list[i].PhieuId = phieuId;
+                list[i].Scope = scope;
+                list[i].Stt = i + 1;
+            }
+            _context.LC_TP_NhanSu.AddRange(list);
+
+            await _context.SaveChangesAsync();
+            await tx.CommitAsync();
+            return list;
+        }
+
+        public async Task<int> DeleteNhanSuAsync(Guid phieuId, int scope)
+        {
+            return await _context.LC_TP_NhanSu
+                .Where(x => x.PhieuId == phieuId && x.Scope == scope)
+                .ExecuteDeleteAsync();
+        }
+
+        // ─── 5S & Bàn giao (LC_TP_GhiChuCa) — TP1 only ───
+
+        public async Task<List<LC_TP_GhiChuCa>> GetGhiChuCaAsync(Guid phieuId, int scope)
+        {
+            return await _context.LC_TP_GhiChuCa
+                .AsNoTracking()
+                .Where(x => x.PhieuId == phieuId && x.Scope == scope)
+                .OrderBy(x => x.Loai).ThenBy(x => x.Stt)
+                .ToListAsync();
+        }
+
+        // Thay toàn bộ (cả 5S + Bàn giao) của phiếu + scope; Stt đánh lại theo thứ tự danh sách,
+        // RIÊNG cho mỗi Loai (không đánh chung 1 dãy số cho cả 2 mục).
+        public async Task<List<LC_TP_GhiChuCa>> ReplaceGhiChuCaAsync(
+            Guid phieuId, int scope, IEnumerable<LC_TP_GhiChuCa> entities)
+        {
+            var list = entities.ToList();
+
+            await using var tx = await _context.Database.BeginTransactionAsync();
+
+            var old = await _context.LC_TP_GhiChuCa
+                .Where(x => x.PhieuId == phieuId && x.Scope == scope)
+                .ToListAsync();
+            _context.LC_TP_GhiChuCa.RemoveRange(old);
+
+            foreach (var group in list.GroupBy(x => x.Loai))
+            {
+                var i = 0;
+                foreach (var e in group)
+                {
+                    e.PhieuId = phieuId;
+                    e.Scope = scope;
+                    e.Stt = ++i;
+                }
+            }
+            _context.LC_TP_GhiChuCa.AddRange(list);
+
+            await _context.SaveChangesAsync();
+            await tx.CommitAsync();
+            return list;
+        }
+
+        public async Task<int> DeleteGhiChuCaAsync(Guid phieuId, int scope)
+        {
+            return await _context.LC_TP_GhiChuCa
                 .Where(x => x.PhieuId == phieuId && x.Scope == scope)
                 .ExecuteDeleteAsync();
         }

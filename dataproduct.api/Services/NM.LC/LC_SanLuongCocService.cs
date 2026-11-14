@@ -19,5 +19,7 @@ namespace dataproduct.api.Services.NM.LC
         public Task<SanLuongCocTabDto> GetTabAsync(Guid idPhieu) => _repo.GetTabAsync(idPhieu);
 
         public Task<SanLuongCocTabDto> SaveTabAsync(Guid idPhieu, SanLuongCocTabSaveDto dto) => _repo.SaveTabAsync(idPhieu, dto);
+
+        public Task<SanLuongCocTabDto> RefreshLuyKeTuCaTruocAsync(Guid idPhieu) => _repo.RefreshLuyKeTuCaTruocAsync(idPhieu);
     }
 }

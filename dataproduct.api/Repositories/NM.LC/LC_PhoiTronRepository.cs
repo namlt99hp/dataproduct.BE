@@ -1,5 +1,6 @@
 using dataproduct.api.DTOs.NM.LC;
 using dataproduct.api.Models;
+using dataproduct.api.Utils;
 using Microsoft.EntityFrameworkCore;
 
 namespace dataproduct.api.Repositories.NM.LC
@@ -427,6 +428,9 @@ namespace dataproduct.api.Repositories.NM.LC
             if (ngaySx == null || ca == null) return klQuyKhoThisShift;
             if (ngaySx.Value.Day == 1 && ca == 1) return klQuyKhoThisShift;
 
+            // Mốc "Chốt lũy kế" thủ công gần nhất — xem LcLuyKeChotMocHelper/SECTION 34.
+            var mocChot = await LcLuyKeChotMocHelper.GetMocChotGanNhatAsync(_context, scope, ngaySx.Value, ca.Value);
+
             var prev = await (
                 from d in _context.LC_PhoiTronChiTiet.AsNoTracking()
                 join h in _context.LC_PhoiTron.AsNoTracking() on d.ID_PhoiTron equals h.ID
@@ -439,6 +443,9 @@ namespace dataproduct.api.Repositories.NM.LC
                     && d.ID_VatTu == idVatTu
                     && h.IDPhieu != idPhieu
                     && (h.NgaySX < ngaySx || (h.NgaySX == ngaySx && h.Ca < ca))
+                    && (mocChot == null || h.NgaySX > mocChot.Value.NgaySX
+                        || (h.NgaySX == mocChot.Value.NgaySX && h.Ca > mocChot.Value.Ca))
+                    && !_context.BmPhieus.Any(bp => bp.Idphieu == h.IDPhieu && bp.IsLock == 1)
                 orderby h.NgaySX descending, h.Ca descending
                 select new { d.LuyKeQuyKho }
             ).FirstOrDefaultAsync();

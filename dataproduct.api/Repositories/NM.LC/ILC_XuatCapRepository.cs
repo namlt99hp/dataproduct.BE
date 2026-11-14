@@ -25,5 +25,9 @@ namespace dataproduct.api.Repositories.NM.LC
         // nếu slot sau đó không còn Nguon nào và không có giá trị nhập tay nào, XOÁ hẳn dòng
         // (giữ đúng triết lý sparse — "mỗi phiếu chỉ gán thôi").
         Task<LcXuatCapSlotDto> BoGanNguonAsync(int idXuatCapNguon);
+
+        // "Làm mới" — tính lại F16/F17/LuyKe của các dòng đã có theo kíp liền trước MỚI NHẤT,
+        // không nhận dữ liệu nhập tay mới. Dùng bởi LC_ChotLuyKeRepository (cascade "Chốt lũy kế").
+        Task<List<LcXuatCapSlotDto>> RefreshLuyKeTuCaTruocAsync(Guid idPhieu);
     }
 }

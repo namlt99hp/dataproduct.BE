@@ -381,6 +381,74 @@ namespace dataproduct.api.Controllers.NMLC
         }
 
         // =====================================================
+        // 8. TÌNH HÌNH NHÂN SỰ — gộp cùng tab Sự cố ở FE (TabSuCo.tsx), branch layout theo Scope
+        // =====================================================
+
+        [HttpGet("nhan-su")]
+        public async Task<IActionResult> GetNhanSu(
+            [FromQuery] Guid phieuId,
+            [FromQuery] int scope)
+        {
+            return Ok(await _service.GetNhanSuAsync(phieuId, scope));
+        }
+
+        // Thay thế toàn bộ dòng nhân sự của phiếu + scope
+        [HttpPut("nhan-su")]
+        public async Task<IActionResult> ReplaceNhanSu(
+            [FromQuery] Guid phieuId,
+            [FromQuery] int scope,
+            [FromBody] List<NhanSuSaveDto> items)
+        {
+            return Ok(await _service.SaveNhanSuAsync(phieuId, scope, items));
+        }
+
+        [HttpDelete("nhan-su")]
+        public async Task<IActionResult> DeleteNhanSu(
+            [FromQuery] Guid phieuId,
+            [FromQuery] int scope)
+        {
+            var deleted = await _service.DeleteNhanSuAsync(phieuId, scope);
+
+            return deleted > 0
+                ? NoContent()
+                : NotFound(new { message = "Phiếu không có dữ liệu nhân sự để xóa." });
+        }
+
+        // =====================================================
+        // 9. 5S & BÀN GIAO — TP1 only (TP2 không có mục này, xem PhanTichLayout.md dòng 78)
+        // =====================================================
+
+        [HttpGet("ghi-chu-ca")]
+        public async Task<IActionResult> GetGhiChuCa(
+            [FromQuery] Guid phieuId,
+            [FromQuery] int scope)
+        {
+            return Ok(await _service.GetGhiChuCaAsync(phieuId, scope));
+        }
+
+        // Thay thế toàn bộ (cả 5S + Bàn giao) của phiếu + scope
+        [HttpPut("ghi-chu-ca")]
+        public async Task<IActionResult> ReplaceGhiChuCa(
+            [FromQuery] Guid phieuId,
+            [FromQuery] int scope,
+            [FromBody] List<GhiChuCaSaveDto> items)
+        {
+            return Ok(await _service.SaveGhiChuCaAsync(phieuId, scope, items));
+        }
+
+        [HttpDelete("ghi-chu-ca")]
+        public async Task<IActionResult> DeleteGhiChuCa(
+            [FromQuery] Guid phieuId,
+            [FromQuery] int scope)
+        {
+            var deleted = await _service.DeleteGhiChuCaAsync(phieuId, scope);
+
+            return deleted > 0
+                ? NoContent()
+                : NotFound(new { message = "Phiếu không có dữ liệu 5S/Bàn giao để xóa." });
+        }
+
+        // =====================================================
         // 7. CHẤT LƯỢNG CỐC
         // =====================================================
 

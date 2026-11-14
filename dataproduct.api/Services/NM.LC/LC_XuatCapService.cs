@@ -27,6 +27,9 @@ namespace dataproduct.api.Services.NM.LC
         public Task<LcXuatCapSlotDto> BoGanNguonAsync(int idXuatCapNguon)
             => _repo.BoGanNguonAsync(idXuatCapNguon);
 
+        public Task<List<LcXuatCapSlotDto>> RefreshLuyKeTuCaTruocAsync(Guid idPhieu)
+            => _repo.RefreshLuyKeTuCaTruocAsync(idPhieu);
+
         // "Làm mới" — liệt kê THÔ danh sách chấm chuyến BBGN (ngay/ca + xưởng giao cố định theo
         // Scope: 162=TP1, 163=TP2, xem PhanTich_TabCapCoc.md §8.2) cho FE hiển thị bên cạnh để
         // người dùng tự gán tay vào slot (§9.0 mục 4 — KHÔNG auto-map). KHÔNG lọc theo Kip (chốt
